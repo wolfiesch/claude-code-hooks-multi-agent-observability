@@ -192,7 +192,7 @@ def main():
     if METADATA_AVAILABLE:
         try:
             collector = MetadataCollector(project_dir)
-            tier0_metadata = collector.collect_tier0_metadata(session_id)
+            tier0_metadata = collector.collect_tier0_metadata(session_id, model_name)
 
             # Increment tool count for PostToolUse events
             if args.event_type == 'PostToolUse':

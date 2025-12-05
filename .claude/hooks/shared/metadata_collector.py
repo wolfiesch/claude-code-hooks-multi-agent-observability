@@ -146,7 +146,7 @@ class MetadataCollector:
 
         return git_info
 
-    def get_session_context(self, session_id: str) -> Dict[str, Any]:
+    def get_session_context(self, session_id: str, model_name: str = None) -> Dict[str, Any]:
         """
         Extract session context.
 
@@ -155,6 +155,7 @@ class MetadataCollector:
 
         Args:
             session_id: Unique session identifier
+            model_name: Optional model name from transcript (e.g., 'claude-sonnet-4-5-20250929')
 
         Returns:
             Dict with session metadata
@@ -176,15 +177,16 @@ class MetadataCollector:
             start_time = start_time.replace(tzinfo=timezone.utc)
         duration = (datetime.now(timezone.utc) - start_time).total_seconds() / 60
 
-        # Get model from environment (set by Claude Code)
-        model = os.environ.get('CLAUDE_MODEL', 'unknown')
+        # Use provided model_name or fall back to environment variable
+        model = model_name or os.environ.get('CLAUDE_MODEL', 'unknown')
+
         # Extract just the model name for readability
         if 'sonnet' in model.lower():
             model_short = 'Sonnet 4.5'
         elif 'opus' in model.lower():
-            model_short = 'Opus'
+            model_short = 'Opus 4.5'
         elif 'haiku' in model.lower():
-            model_short = 'Haiku'
+            model_short = 'Haiku 4.5'
         else:
             model_short = model
 
@@ -334,6 +336,26 @@ class MetadataCollector:
 
         return round(duration_ms, 2)
 
+    def record_todos(self, session_id: str, todos: List[Dict[str, Any]]):
+        """
+        Record TodoWrite updates for session tracking.
+
+        Args:
+            session_id: Unique session identifier
+            todos: List of todo items with content, status, and activeForm
+        """
+        session_key = self._get_session_key(session_id)
+        if session_key not in self._state:
+            self._state[session_key] = {
+                'startTime': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                'toolCount': 0
+            }
+
+        # Store todos with timestamp
+        self._state[session_key]['todos'] = todos
+        self._state[session_key]['lastToolTimestamp'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        self._save_state()
+
     def _update_session_stats(self, session_key: str, tool_name: str, duration_ms: float, tool_input: Dict[str, Any]):
         """Update cumulative session statistics."""
         if 'stats' not in self._state[session_key]:
@@ -448,19 +470,20 @@ class MetadataCollector:
 
         return stats
 
-    def collect_tier0_metadata(self, session_id: str) -> Dict[str, Any]:
+    def collect_tier0_metadata(self, session_id: str, model_name: str = None) -> Dict[str, Any]:
         """
         Collect all Tier 0 metadata.
 
         Args:
             session_id: Unique session identifier
+            model_name: Optional model name from transcript
 
         Returns:
             Dict with all Tier 0 metadata fields
         """
         return {
             "git": self.get_git_context(),
-            "session": self.get_session_context(session_id),
+            "session": self.get_session_context(session_id, model_name),
             "environment": self.get_environment_context()
         }
 
