@@ -4,9 +4,37 @@ Real-time monitoring and visualization for Claude Code agents through comprehens
 
 ## 🎯 Overview
 
-This system provides complete observability into Claude Code agent behavior by capturing, storing, and visualizing Claude Code [Hook events](https://docs.anthropic.com/en/docs/claude-code/hooks) in real-time. It enables monitoring of multiple concurrent agents with session tracking, event filtering, and live updates. 
+This system provides complete observability into Claude Code agent behavior by capturing, storing, and visualizing Claude Code [Hook events](https://docs.anthropic.com/en/docs/claude-code/hooks) in real-time. It enables monitoring of multiple concurrent agents with session tracking, event filtering, and live updates.
 
 <img src="images/app.png" alt="Multi-Agent Observability Dashboard" style="max-width: 800px; width: 100%;">
+
+## ✨ What's New - Tier 0 Enhancements
+
+**Recent improvements for easier adoption and system monitoring:**
+
+### 🚀 One-Command Codex Installer
+Install Codex observability tracking globally with a single command:
+```bash
+./scripts/install-global-tracking.sh
+```
+- Automated setup with validation
+- Cross-repo tracking from any directory
+- Interactive alias configuration
+- No more manual file copying!
+
+### 🏥 Health Check Endpoint
+Monitor system health and performance:
+```bash
+curl http://localhost:4000/health | jq
+```
+Returns:
+- Server uptime and version
+- Database size and event count
+- Active sessions (24h)
+- Events per minute
+- WebSocket client connections
+
+See [ROADMAP.md](./ROADMAP.md) for upcoming features and the full enhancement roadmap.
 
 ## 🏗️ Architecture
 
@@ -26,6 +54,7 @@ Before getting started, ensure you have the following installed:
 - **Anthropic API Key** - Set as `ANTHROPIC_API_KEY` environment variable
 - **OpenAI API Key** (optional) - For multi-model support with just-prompt MCP tool
 - **ElevenLabs API Key** (optional) - For audio features
+- **[Go 1.21+](https://go.dev/dl/)** (optional) - For 17x faster compiled hooks
 
 ### Configure .claude Directory
 
@@ -436,19 +465,39 @@ Track [OpenAI Codex CLI](https://github.com/openai/openai-codex-cli) executions 
 1. **Install Codex CLI** (if not already installed):
    ```bash
    npm install -g @openai/codex-cli
-   
+
    # Set your OpenAI API key
    export OPENAI_API_KEY="sk-..."
    ```
 
-2. **Make the wrapper executable**:
+2. **One-Command Global Installation** (Recommended):
+
+   The easiest way to enable cross-repo Codex tracking:
+
    ```bash
-   chmod +x .claude/hooks/codex-tracked
+   # Run the automated installer
+   ./scripts/install-global-tracking.sh
    ```
 
-3. **Global Installation (Recommended for Cross-Repo Tracking)**:
+   This script will:
+   - ✅ Copy all necessary files to `~/.local/bin/codex-observability/`
+   - ✅ Create symlink at `~/.local/bin/codex-tracked`
+   - ✅ Add `~/.local/bin` to your PATH (if needed)
+   - ✅ Optionally create `codex` alias for automatic tracking
+   - ✅ Validate the installation
 
-   To track Codex from **any** repository (not just this one):
+   After installation:
+   ```bash
+   # Reload your shell
+   source ~/.zshrc  # or ~/.bashrc
+
+   # Test it works
+   codex-tracked --help
+   ```
+
+3. **Manual Installation** (Alternative):
+
+   If you prefer to install manually:
 
    ```bash
    # Install wrapper globally
@@ -465,16 +514,13 @@ Track [OpenAI Codex CLI](https://github.com/openai/openai-codex-cli) executions 
    # Add to shell (if not already in PATH)
    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
    source ~/.zshrc
-   ```
 
-   **Optional: Create alias for automatic tracking**:
-   ```bash
-   # Add to ~/.zshrc
+   # Optional: Create alias for automatic tracking
    echo 'alias codex="codex-tracked"' >> ~/.zshrc
    source ~/.zshrc
    ```
 
-   Now every `codex` command from any directory will automatically track to the dashboard!
+Now every `codex` command from any directory will automatically track to the dashboard!
 
 #### Usage
 
