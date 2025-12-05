@@ -54,6 +54,14 @@ def main():
                 tool_name = input_data.get('tool_name', '')
 
                 collector = MetadataCollector(project_dir)
+
+                # Track TodoWrite updates
+                if tool_name == 'TodoWrite':
+                    tool_input = input_data.get('tool_input', {})
+                    todos = tool_input.get('todos', [])
+                    if todos:
+                        collector.record_todos(session_id, todos)
+
                 duration_ms = collector.record_tool_end(session_id, tool_name)
 
                 # Store duration in a temp file for send_event to pick up

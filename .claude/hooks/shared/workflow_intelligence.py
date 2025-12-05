@@ -207,7 +207,9 @@ class WorkflowIntelligence:
             with open(self.state_file, 'r') as f:
                 state = json.load(f)
 
-            session_state = state.get('sessions', {}).get(session_id, {})
+            # State uses "session_<id>" as keys, not nested under "sessions"
+            session_key = f"session_{session_id}"
+            session_state = state.get(session_key, {})
             todos = session_state.get('todos', [])
 
             if not todos:
