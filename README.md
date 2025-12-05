@@ -252,17 +252,20 @@ Vue 3 application with real-time visualization:
 
 ## 🎨 Event Types & Visualization
 
-| Event Type       | Emoji | Purpose                | Color Coding  | Special Display                       |
-| ---------------- | ----- | ---------------------- | ------------- | ------------------------------------- |
-| PreToolUse       | 🔧     | Before tool execution  | Session-based | Tool name & details                   |
-| PostToolUse      | ✅     | After tool completion  | Session-based | Tool name & results                   |
-| Notification     | 🔔     | User interactions      | Session-based | Notification message                  |
-| Stop             | 🛑     | Response completion    | Session-based | Summary & chat transcript             |
-| SubagentStop     | 👥     | Subagent finished      | Session-based | Subagent details                      |
-| PreCompact       | 📦     | Context compaction     | Session-based | Compaction details                    |
-| UserPromptSubmit | 💬     | User prompt submission | Session-based | Prompt: _"user message"_ (italic)     |
-| SessionStart     | 🚀     | Session started        | Session-based | Session source (startup/resume/clear) |
-| SessionEnd       | 🏁     | Session ended          | Session-based | End reason (clear/logout/exit/other)  |
+| Event Type       | Emoji | Purpose                | Color Coding  | Special Display                       | Agent |
+| ---------------- | ----- | ---------------------- | ------------- | ------------------------------------- | ----- |
+| PreToolUse       | 🔧     | Before tool execution  | Session-based | Tool name & details                   | Claude |
+| PostToolUse      | ✅     | After tool completion  | Session-based | Tool name & results                   | Claude |
+| Notification     | 🔔     | User interactions      | Session-based | Notification message                  | Claude |
+| Stop             | 🛑     | Response completion    | Session-based | Summary & chat transcript             | Claude |
+| SubagentStop     | 👥     | Subagent finished      | Session-based | Subagent details                      | Claude |
+| PreCompact       | 📦     | Context compaction     | Session-based | Compaction details                    | Claude |
+| UserPromptSubmit | 💬     | User prompt submission | Session-based | Prompt: _"user message"_ (italic)     | Claude |
+| SessionStart     | 🚀     | Session started        | Session-based | Session source (startup/resume/clear) | Claude |
+| SessionEnd       | 🏁     | Session ended          | Session-based | End reason (clear/logout/exit/other)  | Claude |
+| TaskStart        | ▶️     | Codex task begins      | Session-based | Command & model                       | Codex |
+| TaskComplete     | ✅     | Codex task success     | Session-based | Duration & exit code                  | Codex |
+| TaskError        | ❌     | Codex task failed      | Session-based | Error message & exit code             | Codex |
 
 ### UserPromptSubmit Event (v1.0.54+)
 
@@ -271,6 +274,146 @@ The `UserPromptSubmit` hook captures every user prompt before Claude processes i
 - Shows the actual prompt content inline (truncated to 100 chars)
 - Summary appears on the right side when AI summarization is enabled
 - Useful for tracking user intentions and conversation flow
+
+## 🤖 Multi-Agent Support: Codex CLI Integration
+
+The observability system now supports tracking **multiple AI agents** beyond Claude, starting with **OpenAI Codex CLI** integration.
+
+### Supported Agents
+
+| Agent | Type | Version Tracking | Status |
+|-------|------|------------------|--------|
+| **Claude Code** | `claude` | ✅ (via model_name) | Default |
+| **OpenAI Codex** | `codex` | ✅ (via agent_version) | ✅ Supported |
+| **Google Gemini** | `gemini` | ✅ | 🚧 Planned |
+| **Custom** | `custom` | ✅ | 🚧 Extensible |
+
+### Codex CLI Tracking
+
+Track [OpenAI Codex CLI](https://github.com/openai/openai-codex-cli) executions with full observability:
+
+#### Installation
+
+1. **Install Codex CLI** (if not already installed):
+   ```bash
+   npm install -g @openai/codex-cli
+   
+   # Set your OpenAI API key
+   export OPENAI_API_KEY="sk-..."
+   ```
+
+2. **Make the wrapper executable**:
+   ```bash
+   chmod +x .claude/hooks/codex-tracked
+   ```
+
+#### Usage
+
+Replace `codex` commands with `codex-tracked` to enable observability:
+
+```bash
+# Standard Codex command
+codex exec -m gpt-5.1-codex-max "Refactor this codebase"
+
+# With observability tracking
+./.claude/hooks/codex-tracked exec -m gpt-5.1-codex-max "Refactor this codebase"
+```
+
+**What gets tracked:**
+- ✅ **TaskStart** - Codex session begins (▶️)
+- ✅ **TaskComplete** - Successful completion (✅)
+- ✅ **TaskError** - Execution errors (❌)
+- ✅ **Agent metadata**: Model name, version (0.64.0), command, duration
+- ✅ **Session tracking**: UUID-based session IDs
+
+#### Wrapper Architecture
+
+```
+User Command → codex-tracked → Codex CLI → send_event.py → Dashboard
+                    ↓
+              Session UUID
+              Event Timing
+              Error Handling
+```
+
+The `codex-tracked` wrapper:
+1. Generates a unique session ID
+2. Emits **TaskStart** event before Codex executes
+3. Spawns actual Codex CLI process
+4. Captures exit code and duration
+5. Emits **TaskComplete** or **TaskError** based on result
+6. Preserves original Codex output and exit codes
+
+#### Dashboard Visualization
+
+Events from Codex appear in the dashboard with:
+- **Purple 🤖 badge**: Shows agent type (e.g., "codex")
+- **Tooltip**: Displays agent version on hover
+- **Distinct icons**: ▶️ TaskStart, ✅ TaskComplete, ❌ TaskError
+- **Filtering**: Filter events by `agent_type` in the dashboard
+
+#### Event Filtering
+
+Filter events by agent type via UI or API:
+
+```bash
+# Via API - Get only Codex events
+curl 'http://localhost:4000/events/recent?agent_type=codex&limit=50'
+
+# Via API - Get only Claude events
+curl 'http://localhost:4000/events/recent?agent_type=claude&limit=50'
+```
+
+In the dashboard:
+1. Click the **Agent Type** dropdown in the filter panel
+2. Select "codex" to see only Codex events
+3. Select "claude" to see only Claude events
+4. Select "All Agents" to see everything
+
+### Event Queue & Offline Resilience
+
+If the observability server is unavailable:
+- ✅ Events are **queued locally** at `.claude/data/event_queue.jsonl`
+- ✅ **Automatic retry** with exponential backoff (0.5s, 1s, 2s)
+- ✅ **Queue flush** when server reconnects
+- ✅ **No blocking** - Codex execution continues regardless
+
+### Example: Mixed Agent Workflow
+
+Track both Claude and Codex working together:
+
+```bash
+# 1. Claude explores the codebase
+claude "Analyze the authentication module and identify refactoring opportunities"
+
+# 2. Codex implements the refactoring
+./.claude/hooks/codex-tracked exec -m gpt-5.1-codex-max \
+  "Refactor the authentication module based on the analysis in the previous session"
+
+# 3. Claude reviews the changes
+claude "Review the refactoring changes and run tests"
+```
+
+All events appear in the same dashboard with clear agent identification.
+
+### Adding Custom Agents
+
+To add support for other AI agents:
+
+1. **Create a wrapper script** (similar to `codex-tracked`)
+2. **Emit events** using `send_event.py`:
+   ```bash
+   echo '{"session_id": "...", ...}' | \
+     python3 .claude/hooks/send_event.py \
+       --source-app "your-agent-cli" \
+       --event-type "TaskStart" \
+       --agent-type "custom" \
+       --agent-version "1.0.0"
+   ```
+3. **Define event types** and emojis in `apps/client/src/composables/useEventEmojis.ts`
+
+See `.claude/hooks/codex_wrapper.ts` for a complete reference implementation.
+
 
 ## 🔌 Integration
 
@@ -389,4 +532,61 @@ This ensures your hooks work correctly regardless of where Claude Code is execut
 Learn tactical agentic coding patterns with [Tactical Agentic Coding](https://agenticengineer.com/tactical-agentic-coding?y=cchobvwh45)
 
 Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to improve your agentic coding advantage.
+
+
+### Codex Integration Issues
+
+**Problem**: Codex wrapper not found or permission denied
+
+```bash
+# Solution: Make wrapper executable
+chmod +x .claude/hooks/codex-tracked
+
+# Verify it's executable
+ls -la .claude/hooks/codex-tracked
+```
+
+**Problem**: Codex events not appearing in dashboard
+
+```bash
+# Check if observability server is running
+curl http://localhost:4000/events/filter-options
+
+# Check event queue for offline events
+cat .claude/data/event_queue.jsonl
+
+# Verify Codex CLI is installed
+codex --version
+```
+
+**Problem**: "codex: command not found"
+
+```bash
+# Install Codex CLI globally
+npm install -g @openai/codex-cli
+
+# Set OpenAI API key
+export OPENAI_API_KEY="sk-..."
+
+# Verify installation
+codex --version
+```
+
+**Problem**: Events show wrong agent_type
+
+The wrapper automatically sets `agent_type: "codex"`. If you see incorrect types:
+1. Make sure you're using `./.claude/hooks/codex-tracked` (not plain `codex`)
+2. Check that `send_event.py` has the `--agent-type codex` argument
+3. Verify the wrapper script hasn't been modified
+
+**Problem**: Agent filter shows no Codex events
+
+Codex events may be older than recent Claude events. Increase the limit:
+
+```bash
+# API: Use larger limit
+curl 'http://localhost:4000/events/recent?agent_type=codex&limit=100'
+
+# Dashboard: The filter automatically fetches enough events
+```
 
