@@ -145,16 +145,32 @@ const formatGap = (gapMs: number): string => {
   return `${(gapMs / 1000).toFixed(1)}s`;
 };
 
+// Normalize session IDs to the 8-char prefix used in chips and server payloads
+const normalizeSessionId = (sessionId?: string | null) => (sessionId || '').slice(0, 8);
+
 // Extract app name and session ID from agent ID for display
-const appName = computed(() => props.agentName.split(':')[0]);
-const sessionId = computed(() => props.agentName.split(':')[1]);
+const agentParts = computed(() => {
+  const [app, session] = props.agentName.split(':');
+  return {
+    app: app || '',
+    session: normalizeSessionId(session)
+  };
+});
+
+const appName = computed(() => agentParts.value.app);
+const sessionId = computed(() => agentParts.value.session);
+
+const matchesAgentEvent = (event: HookEvent) => {
+  return (
+    event.source_app === appName.value &&
+    normalizeSessionId(event.session_id) === sessionId.value
+  );
+};
 
 // Get model name from most recent event for this agent
 const modelName = computed(() => {
-  const [targetApp, targetSession] = props.agentName.split(':');
   const agentEvents = props.events
-    .filter(e => e.source_app === targetApp && e.session_id.slice(0, 8) === targetSession)
-    .filter(e => e.model_name); // Only events with model_name
+    .filter(event => matchesAgentEvent(event) && event.model_name);
 
   if (agentEvents.length === 0) return null;
 
@@ -190,6 +206,8 @@ let renderer: ReturnType<typeof createChartRenderer> | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let animationFrame: number | null = null;
 const processedEventIds = new Set<string>();
+const DEBUG_LOG_LIMIT = 5;
+let debugLogCount = 0;
 
 const { formatEventTypeLabel } = useEventEmojis();
 const { getHexColorForApp, getHexColorForSession } = useEventColors();
@@ -211,13 +229,11 @@ const toolCallCount = computed(() => {
 
 // Aggregate git stats from Codex TaskComplete events
 const gitStats = computed(() => {
-  const [targetApp, targetSession] = props.agentName.split(':');
   const codexEvents = props.events
-    .filter(e =>
-      e.source_app === targetApp &&
-      e.session_id.slice(0, 8) === targetSession &&
-      e.hook_event_type === 'TaskComplete' &&
-      e.git_stats
+    .filter(event =>
+      matchesAgentEvent(event) &&
+      event.hook_event_type === 'TaskComplete' &&
+      event.git_stats
     );
 
   if (codexEvents.length === 0) return null;
@@ -234,8 +250,7 @@ const gitStats = computed(() => {
 });
 
 const chartAriaLabel = computed(() => {
-  const [app, session] = props.agentName.split(':');
-  return `Activity chart for ${app} (session: ${session}) showing ${totalEventCount.value} events`;
+  return `Activity chart for ${appName.value} (session: ${sessionId.value}) showing ${totalEventCount.value} events`;
 });
 
 const tooltip = ref({
@@ -337,17 +352,26 @@ const processNewEvents = () => {
     }
   });
 
-  // Parse agent ID to get app and session
-  const [targetApp, targetSession] = props.agentName.split(':');
-
   // Process new events (filter by agent ID: app:session)
   newEventsToProcess.forEach(event => {
-    if (
-      event.hook_event_type !== 'refresh' &&
-      event.hook_event_type !== 'initial' &&
-      event.source_app === targetApp &&
-      event.session_id.slice(0, 8) === targetSession
-    ) {
+    if (event.hook_event_type === 'refresh' || event.hook_event_type === 'initial') {
+      return;
+    }
+
+    const matches = matchesAgentEvent(event);
+
+    if (import.meta.env.DEV && debugLogCount < DEBUG_LOG_LIMIT) {
+      console.debug('[AgentSwimLane] session comparison', {
+        agent: props.agentName,
+        targetSession: sessionId.value,
+        rawEventSession: event.session_id,
+        normalizedEventSession: normalizeSessionId(event.session_id),
+        matches
+      });
+      debugLogCount += 1;
+    }
+
+    if (matches) {
       addEvent(event);
 
       // Trigger pulse animation for new event

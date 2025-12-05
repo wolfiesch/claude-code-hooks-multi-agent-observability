@@ -5,16 +5,28 @@ export function useChartData(agentIdFilter?: string) {
   const timeRange = ref<TimeRange>('1m');
   const dataPoints = ref<ChartDataPoint[]>([]);
 
-  // Parse agent ID filter (format: "app:session")
-  const parseAgentId = (agentId: string): { app: string; session: string } | null => {
-    const parts = agentId.split(':');
-    if (parts.length === 2) {
-      return { app: parts[0], session: parts[1] };
-    }
-    return null;
-  };
+// Parse agent ID filter (format: "app:session")
+const parseAgentId = (agentId: string): { app: string; session: string } | null => {
+  const parts = agentId.split(':');
+  if (parts.length === 2) {
+    return { app: parts[0], session: parts[1] };
+  }
+  return null;
+};
 
-  const agentIdParsed = agentIdFilter ? parseAgentId(agentIdFilter) : null;
+// Keep session matching consistent with agent chips (8-char prefix)
+const normalizeSessionId = (sessionId?: string | null) => (sessionId || '').slice(0, 8);
+
+const agentIdParsed = agentIdFilter ? parseAgentId(agentIdFilter) : null;
+const targetSessionPrefix = agentIdParsed ? normalizeSessionId(agentIdParsed.session) : '';
+
+const matchesAgent = (event: HookEvent) => {
+  if (!agentIdParsed) return true;
+  return (
+    event.source_app === agentIdParsed.app &&
+    normalizeSessionId(event.session_id) === targetSessionPrefix
+  );
+};
   
   // Store all events for re-aggregation when time range changes
   const allEvents = ref<HookEvent[]>([]);
@@ -64,15 +76,9 @@ export function useChartData(agentIdFilter?: string) {
     eventsToProcess.forEach(event => {
       if (!event.timestamp) return;
 
-      // Skip if event doesn't match agent ID filter (check both app and session)
-      if (agentIdParsed) {
-        if (event.source_app !== agentIdParsed.app) {
-          return;
-        }
-        // Check if session ID matches (first 8 chars)
-        if (event.session_id.slice(0, 8) !== agentIdParsed.session) {
-          return;
-        }
+      // Skip if event doesn't match agent ID filter (check both app and normalized session)
+      if (!matchesAgent(event)) {
+        return;
       }
 
       const bucketTime = getBucketTimestamp(event.timestamp);
@@ -184,10 +190,7 @@ export function useChartData(agentIdFilter?: string) {
     );
 
     if (agentIdParsed) {
-      relevantEvents = relevantEvents.filter(event =>
-        event.source_app === agentIdParsed.app &&
-        event.session_id.slice(0, 8) === agentIdParsed.session
-      );
+      relevantEvents = relevantEvents.filter(event => matchesAgent(event));
     }
 
     // Re-aggregate all relevant events

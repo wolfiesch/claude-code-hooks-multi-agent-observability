@@ -101,19 +101,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
-import type { HookEvent } from '../types';
+import type { HookEvent, FilterState } from '../types';
 import EventRow from './EventRow.vue';
 import { useEventColors } from '../composables/useEventColors';
 import { useEventSearch } from '../composables/useEventSearch';
 
 const props = defineProps<{
   events: HookEvent[];
-  filters: {
-    sourceApp: string;
-    sessionId: string;
-    eventType: string;
-    agentType: string;
-  };
+  filters: FilterState;
   stickToBottom: boolean;
   uniqueAppNames?: string[]; // Agent IDs (app:session) active in current time window
   allAppNames?: string[]; // All agent IDs (app:session) ever seen in session
@@ -138,6 +133,8 @@ const getAppNameFromAgentId = (agentId: string): string => {
   return agentId.split(':')[0];
 };
 
+const resolveAgentType = (event: HookEvent) => event.agent_type || event.source_app || 'unknown';
+
 // Check if an agent is currently active (has events in the current time window)
 const isAgentActive = (agentId: string): boolean => {
   return (props.uniqueAppNames || []).includes(agentId);
@@ -151,10 +148,10 @@ const filteredEvents = computed(() => {
     if (props.filters.sessionId && event.session_id !== props.filters.sessionId) {
       return false;
     }
-    if (props.filters.eventType && event.hook_event_type !== props.filters.eventType) {
+    if (props.filters.eventTypes?.size && !props.filters.eventTypes.has(event.hook_event_type)) {
       return false;
     }
-    if (props.filters.agentType && (event.agent_type || 'claude') !== props.filters.agentType) {
+    if (props.filters.agentTypes?.size && !props.filters.agentTypes.has(resolveAgentType(event))) {
       return false;
     }
     return true;

@@ -7,11 +7,11 @@
         </label>
         <select
           v-model="localFilters.sourceApp"
-          @change="updateFilters"
+          @change="updateSourceApp(($event.target as HTMLSelectElement).value)"
           class="w-full px-4 py-2 mobile:px-2 mobile:py-1.5 text-base mobile:text-sm border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 focus:border-[var(--theme-primary-dark)] bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] shadow-md hover:shadow-lg transition-all duration-200"
         >
           <option value="">All Sources</option>
-          <option v-for="app in filterOptions.source_apps" :key="app" :value="app">
+          <option v-for="app in sourceAppOptions" :key="app" :value="app">
             {{ app }}
           </option>
         </select>
@@ -23,46 +23,38 @@
         </label>
         <select
           v-model="localFilters.sessionId"
-          @change="updateFilters"
+          @change="updateSessionId(($event.target as HTMLSelectElement).value)"
           class="w-full px-4 py-2 mobile:px-2 mobile:py-1.5 text-base mobile:text-sm border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 focus:border-[var(--theme-primary-dark)] bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] shadow-md hover:shadow-lg transition-all duration-200"
         >
           <option value="">All Sessions</option>
-          <option v-for="session in filterOptions.session_ids" :key="session" :value="session">
+          <option v-for="session in sessionIdOptions" :key="session" :value="session">
             {{ session.slice(0, 8) }}...
           </option>
         </select>
       </div>
       
-      <div class="flex-1 min-w-0 mobile:w-full">
+      <div class="flex-1 min-w-0 mobile:w-full flex flex-col">
         <label class="block text-base mobile:text-sm font-bold text-[var(--theme-primary)] mb-1.5 drop-shadow-sm">
-          Event Type
+          Event Types
         </label>
-        <select
-          v-model="localFilters.eventType"
-          @change="updateFilters"
-          class="w-full px-4 py-2 mobile:px-2 mobile:py-1.5 text-base mobile:text-sm border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 focus:border-[var(--theme-primary-dark)] bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] shadow-md hover:shadow-lg transition-all duration-200"
-        >
-          <option value="">All Types</option>
-          <option v-for="type in filterOptions.hook_event_types" :key="type" :value="type">
-            {{ type }}
-          </option>
-        </select>
+        <FilterDropdown
+          label="Event Type"
+          :options="eventTypeDropdownOptions"
+          :model-value="localFilters.eventTypes"
+          @update:modelValue="handleEventTypesChange"
+        />
       </div>
 
-      <div class="flex-1 min-w-0 mobile:w-full">
+      <div class="flex-1 min-w-0 mobile:w-full flex flex-col">
         <label class="block text-base mobile:text-sm font-bold text-[var(--theme-primary)] mb-1.5 drop-shadow-sm">
-          Agent Type
+          Agent Types
         </label>
-        <select
-          v-model="localFilters.agentType"
-          @change="updateFilters"
-          class="w-full px-4 py-2 mobile:px-2 mobile:py-1.5 text-base mobile:text-sm border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 focus:border-[var(--theme-primary-dark)] bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] shadow-md hover:shadow-lg transition-all duration-200"
-        >
-          <option value="">All Agents</option>
-          <option v-for="agent in filterOptions.agent_types" :key="agent" :value="agent">
-            {{ agent }}
-          </option>
-        </select>
+        <FilterDropdown
+          label="Agent Type"
+          :options="agentTypeDropdownOptions"
+          :model-value="localFilters.agentTypes"
+          @update:modelValue="handleAgentTypesChange"
+        />
       </div>
 
       <button
@@ -77,64 +69,96 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import type { FilterOptions } from '../types';
-import { API_BASE_URL } from '../config';
+import { ref, computed, watch } from 'vue';
+import type { FilterOption, FilterState } from '../types';
+import FilterDropdown from './FilterDropdown.vue';
 
-const props = defineProps<{
-  filters: {
-    sourceApp: string;
-    sessionId: string;
-    eventType: string;
-    agentType: string;
-  };
-}>();
+const props = withDefaults(defineProps<{
+  filters: FilterState;
+  sourceAppOptions?: string[];
+  sessionIdOptions?: string[];
+  agentTypeOptions?: string[];
+  eventTypeOptions?: string[];
+}>(), {
+  sourceAppOptions: () => [],
+  sessionIdOptions: () => [],
+  agentTypeOptions: () => [],
+  eventTypeOptions: () => []
+});
 
 const emit = defineEmits<{
-  'update:filters': [filters: typeof props.filters];
+  'update:filters': [filters: FilterState];
 }>();
 
-const filterOptions = ref<FilterOptions>({
-  source_apps: [],
-  session_ids: [],
-  hook_event_types: [],
-  agent_types: []
+const localFilters = ref<FilterState>({
+  sourceApp: props.filters.sourceApp,
+  sessionId: props.filters.sessionId,
+  eventTypes: new Set(props.filters.eventTypes),
+  agentTypes: new Set(props.filters.agentTypes)
 });
 
-const localFilters = ref({ ...props.filters });
+watch(() => props.filters, (next) => {
+  localFilters.value = {
+    sourceApp: next.sourceApp,
+    sessionId: next.sessionId,
+    eventTypes: new Set(next.eventTypes),
+    agentTypes: new Set(next.agentTypes)
+  };
+}, { deep: true });
 
 const hasActiveFilters = computed(() => {
-  return localFilters.value.sourceApp || localFilters.value.sessionId || localFilters.value.eventType || localFilters.value.agentType;
+  return Boolean(
+    localFilters.value.sourceApp ||
+    localFilters.value.sessionId ||
+    localFilters.value.eventTypes.size ||
+    localFilters.value.agentTypes.size
+  );
 });
 
-const updateFilters = () => {
-  emit('update:filters', { ...localFilters.value });
+const eventTypeDropdownOptions = computed<FilterOption[]>(() =>
+  (props.eventTypeOptions || []).map(type => ({ label: type, value: type }))
+);
+
+const agentTypeDropdownOptions = computed<FilterOption[]>(() =>
+  (props.agentTypeOptions || []).map(type => ({ label: type, value: type }))
+);
+
+const emitFilters = () => {
+  emit('update:filters', {
+    sourceApp: localFilters.value.sourceApp,
+    sessionId: localFilters.value.sessionId,
+    eventTypes: new Set(localFilters.value.eventTypes),
+    agentTypes: new Set(localFilters.value.agentTypes)
+  });
 };
 
 const clearFilters = () => {
   localFilters.value = {
     sourceApp: '',
     sessionId: '',
-    eventType: '',
-    agentType: ''
+    eventTypes: new Set<string>(),
+    agentTypes: new Set<string>()
   };
-  updateFilters();
+  emitFilters();
 };
 
-const fetchFilterOptions = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/events/filter-options`);
-    if (response.ok) {
-      filterOptions.value = await response.json();
-    }
-  } catch (error) {
-    console.error('Failed to fetch filter options:', error);
-  }
+const updateSourceApp = (value: string) => {
+  localFilters.value.sourceApp = value;
+  emitFilters();
 };
 
-onMounted(() => {
-  fetchFilterOptions();
-  // Refresh filter options periodically
-  setInterval(fetchFilterOptions, 10000);
-});
+const updateSessionId = (value: string) => {
+  localFilters.value.sessionId = value;
+  emitFilters();
+};
+
+const handleAgentTypesChange = (values: Set<string>) => {
+  localFilters.value.agentTypes = new Set(values);
+  emitFilters();
+};
+
+const handleEventTypesChange = (values: Set<string>) => {
+  localFilters.value.eventTypes = new Set(values);
+  emitFilters();
+};
 </script>

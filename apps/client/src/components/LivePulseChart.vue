@@ -1,65 +1,88 @@
 <template>
   <div class="bg-gradient-to-r from-[var(--theme-bg-primary)] to-[var(--theme-bg-secondary)] px-3 py-4 mobile:py-2 shadow-lg">
-    <div class="flex items-center justify-between mb-3 mobile:mb-2">
-      <div class="flex items-center gap-3 mobile:gap-2">
-        <h3 class="text-base mobile:text-xs font-bold text-[var(--theme-primary)] drop-shadow-sm flex items-center">
-          <span class="mr-1.5 mobile:mr-1 text-xl mobile:text-sm">📊</span>
-          <span class="mobile:hidden">Live Activity Pulse</span>
-        </h3>
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <div
-            class="flex items-center gap-1.5 px-2 py-1 bg-gradient-to-r from-[var(--theme-primary)]/10 to-[var(--theme-primary-light)]/10 rounded-lg border border-[var(--theme-primary)]/30 shadow-sm"
-            :title="`${uniqueAgentCount} active agent${uniqueAgentCount !== 1 ? 's' : ''}`"
-          >
-            <span class="text-lg mobile:text-base">👥</span>
-            <span class="text-sm mobile:text-xs font-bold text-[var(--theme-primary)]">{{ uniqueAgentCount }}</span>
-            <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">agents</span>
-          </div>
-          <div
-            class="flex items-center gap-1.5 px-2 py-1 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm"
-            :title="`Total events in the last ${timeRange === '1m' ? '1 minute' : timeRange === '3m' ? '3 minutes' : timeRange === '5m' ? '5 minutes' : '10 minutes'}`"
-          >
-            <span class="text-lg mobile:text-base">⚡</span>
-            <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ totalEventCount }}</span>
-            <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">events</span>
-          </div>
-          <div
-            class="flex items-center gap-1.5 px-2 py-1 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm"
-            :title="`Total tool calls in the last ${timeRange === '1m' ? '1 minute' : timeRange === '3m' ? '3 minutes' : timeRange === '5m' ? '5 minutes' : '10 minutes'}`"
-          >
-            <span class="text-lg mobile:text-base">🔧</span>
-            <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ toolCallCount }}</span>
-            <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">tools</span>
-          </div>
-          <div
-            class="flex items-center gap-1.5 px-2 py-1 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm"
-            :title="`Average time between events in the last ${timeRange === '1m' ? '1 minute' : timeRange === '3m' ? '3 minutes' : timeRange === '5m' ? '5 minutes' : '10 minutes'}`"
-          >
-            <span class="text-lg mobile:text-base">🕐</span>
-            <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ formatGap(eventTimingMetrics.avgGap) }}</span>
-            <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">avg gap</span>
+    <div class="flex flex-col gap-2 mb-3 mobile:mb-2">
+      <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
+        <div class="flex items-center gap-3 mobile:gap-2 flex-wrap">
+          <h3 class="text-base mobile:text-xs font-bold text-[var(--theme-primary)] drop-shadow-sm flex items-center">
+            <span class="mr-1.5 mobile:mr-1 text-xl mobile:text-sm">📊</span>
+            <span class="mobile:hidden">Live Activity Pulse</span>
+          </h3>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <div
+              class="flex items-center gap-1.5 px-2 py-1 bg-gradient-to-r from-[var(--theme-primary)]/10 to-[var(--theme-primary-light)]/10 rounded-lg border border-[var(--theme-primary)]/30 shadow-sm"
+              :title="`${uniqueAgentCount} active agent${uniqueAgentCount !== 1 ? 's' : ''}`"
+            >
+              <span class="text-lg mobile:text-base">👥</span>
+              <span class="text-sm mobile:text-xs font-bold text-[var(--theme-primary)]">{{ uniqueAgentCount }}</span>
+              <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">agents</span>
+            </div>
+            <div
+              class="flex items-center gap-1.5 px-2 py-1 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm"
+              :title="`Total events in the last ${timeRange === '1m' ? '1 minute' : timeRange === '3m' ? '3 minutes' : timeRange === '5m' ? '5 minutes' : '10 minutes'}`"
+            >
+              <span class="text-lg mobile:text-base">⚡</span>
+              <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ totalEventCount }}</span>
+              <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">events</span>
+            </div>
+            <div
+              class="flex items-center gap-1.5 px-2 py-1 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm"
+              :title="`Total tool calls in the last ${timeRange === '1m' ? '1 minute' : timeRange === '3m' ? '3 minutes' : timeRange === '5m' ? '5 minutes' : '10 minutes'}`"
+            >
+              <span class="text-lg mobile:text-base">🔧</span>
+              <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ toolCallCount }}</span>
+              <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">tools</span>
+            </div>
+            <div
+              class="flex items-center gap-1.5 px-2 py-1 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm"
+              :title="`Average time between events in the last ${timeRange === '1m' ? '1 minute' : timeRange === '3m' ? '3 minutes' : timeRange === '5m' ? '5 minutes' : '10 minutes'}`"
+            >
+              <span class="text-lg mobile:text-base">🕐</span>
+              <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ formatGap(eventTimingMetrics.avgGap) }}</span>
+              <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">avg gap</span>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="flex gap-1.5 mobile:gap-1" role="tablist" aria-label="Time range selector">
-        <button
-          v-for="(range, index) in timeRanges"
-          :key="range"
-          @click="setTimeRange(range)"
-          @keydown="handleTimeRangeKeyDown($event, index)"
-          :class="[
-            'px-3 py-1.5 mobile:px-2 mobile:py-1 text-sm mobile:text-xs font-bold rounded-lg transition-all duration-200 min-w-[30px] mobile:min-w-[24px] min-h-[30px] mobile:min-h-[24px] flex items-center justify-center shadow-md hover:shadow-lg transform hover:scale-105 border',
-            timeRange === range
-              ? 'bg-gradient-to-r from-[var(--theme-primary)] to-[var(--theme-primary-light)] text-white border-[var(--theme-primary-dark)] drop-shadow-md'
-              : 'bg-[var(--theme-bg-tertiary)] text-[var(--theme-text-primary)] border-[var(--theme-border-primary)] hover:bg-[var(--theme-bg-quaternary)] hover:border-[var(--theme-primary)]'
-          ]"
-          role="tab"
-          :aria-selected="timeRange === range"
-          :aria-label="`Show ${range === '1m' ? '1 minute' : range === '3m' ? '3 minutes' : range === '5m' ? '5 minutes' : '10 minutes'} of activity`"
-          :tabindex="timeRange === range ? 0 : -1"
-        >
-          {{ range }}
-        </button>
+        <div class="flex flex-wrap items-center gap-2 justify-start xl:justify-end">
+          <FilterDropdown
+            label="Agent Type"
+            :options="agentTypeDropdownOptions"
+            :model-value="filters.agentTypes"
+            @update:modelValue="updateAgentTypes"
+          />
+          <FilterDropdown
+            label="Event Type"
+            :options="eventTypeDropdownOptions"
+            :model-value="filters.eventTypes"
+            @update:modelValue="updateEventTypes"
+          />
+          <button
+            v-if="hasActiveFilters"
+            class="px-3 py-1.5 text-sm font-bold rounded-lg border border-[var(--theme-border-primary)] bg-[var(--theme-bg-tertiary)] hover:bg-[var(--theme-bg-quaternary)] transition-all duration-200 shadow-sm"
+            @click="clearFilterSelections"
+          >
+            Clear Filters
+          </button>
+          <div class="flex gap-1.5 mobile:gap-1" role="tablist" aria-label="Time range selector">
+            <button
+              v-for="(range, index) in timeRanges"
+              :key="range"
+              @click="setTimeRange(range)"
+              @keydown="handleTimeRangeKeyDown($event, index)"
+              :class="[
+                'px-3 py-1.5 mobile:px-2 mobile:py-1 text-sm mobile:text-xs font-bold rounded-lg transition-all duration-200 min-w-[30px] mobile:min-w-[24px] min-h-[30px] mobile:min-h-[24px] flex items-center justify-center shadow-md hover:shadow-lg transform hover:scale-105 border',
+                timeRange === range
+                  ? 'bg-gradient-to-r from-[var(--theme-primary)] to-[var(--theme-primary-light)] text-white border-[var(--theme-primary-dark)] drop-shadow-md'
+                  : 'bg-[var(--theme-bg-tertiary)] text-[var(--theme-text-primary)] border-[var(--theme-border-primary)] hover:bg-[var(--theme-bg-quaternary)] hover:border-[var(--theme-primary)]'
+              ]"
+              role="tab"
+              :aria-selected="timeRange === range"
+              :aria-label="`Show ${range === '1m' ? '1 minute' : range === '3m' ? '3 minutes' : range === '5m' ? '5 minutes' : '10 minutes'} of activity`"
+              :tabindex="timeRange === range ? 0 : -1"
+            >
+              {{ range }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div ref="chartContainer" class="relative">
@@ -94,25 +117,28 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
-import type { HookEvent, TimeRange, ChartConfig } from '../types';
+import type { HookEvent, TimeRange, ChartConfig, FilterState, FilterOption } from '../types';
 import { useChartData } from '../composables/useChartData';
 import { createChartRenderer, type ChartDimensions } from '../utils/chartRenderer';
 import { useEventEmojis } from '../composables/useEventEmojis';
 import { useEventColors } from '../composables/useEventColors';
+import FilterDropdown from './FilterDropdown.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   events: HookEvent[];
-  filters: {
-    sourceApp: string;
-    sessionId: string;
-    eventType: string;
-  };
-}>();
+  filters: FilterState;
+  agentTypeOptions?: string[];
+  eventTypeOptions?: string[];
+}>(), {
+  agentTypeOptions: () => [],
+  eventTypeOptions: () => []
+});
 
 const emit = defineEmits<{
   updateUniqueApps: [appNames: string[]];
   updateAllApps: [appNames: string[]];
   updateTimeRange: [timeRange: TimeRange];
+  updateFilters: [filters: FilterState];
 }>();
 
 const canvas = ref<HTMLCanvasElement>();
@@ -166,8 +192,53 @@ let resizeObserver: ResizeObserver | null = null;
 let animationFrame: number | null = null;
 const processedEventIds = new Set<string>();
 
-const { formatEventTypeLabel } = useEventEmojis();
+const { formatEventTypeLabel, getEmojiForEventType } = useEventEmojis();
 const { getHexColorForSession } = useEventColors();
+
+const eventTypeDropdownOptions = computed<FilterOption[]>(() =>
+  props.eventTypeOptions.map(type => ({
+    label: `${getEmojiForEventType(type)} ${type}`.trim(),
+    value: type
+  }))
+);
+
+const agentTypeDropdownOptions = computed<FilterOption[]>(() =>
+  props.agentTypeOptions.map(type => ({ label: type, value: type }))
+);
+
+const resolveAgentType = (event: HookEvent) => event.agent_type || event.source_app || 'unknown';
+
+const hasActiveFilters = computed(() => (
+  Boolean(props.filters.sourceApp || props.filters.sessionId) ||
+  (props.filters.eventTypes?.size || 0) > 0 ||
+  (props.filters.agentTypes?.size || 0) > 0
+));
+
+const emitFilters = (next: Partial<FilterState>) => {
+  emit('updateFilters', {
+    ...props.filters,
+    ...next,
+    agentTypes: next.agentTypes ? new Set(next.agentTypes) : props.filters.agentTypes,
+    eventTypes: next.eventTypes ? new Set(next.eventTypes) : props.filters.eventTypes
+  });
+};
+
+const updateAgentTypes = (values: Set<string>) => {
+  emitFilters({ agentTypes: values });
+};
+
+const updateEventTypes = (values: Set<string>) => {
+  emitFilters({ eventTypes: values });
+};
+
+const clearFilterSelections = () => {
+  emitFilters({
+    sourceApp: '',
+    sessionId: '',
+    agentTypes: new Set<string>(),
+    eventTypes: new Set<string>()
+  });
+};
 
 const hasData = computed(() => dataPoints.value.some(dp => dp.count > 0));
 
@@ -277,7 +348,10 @@ const isEventFiltered = (event: HookEvent): boolean => {
   if (props.filters.sessionId && event.session_id !== props.filters.sessionId) {
     return false;
   }
-  if (props.filters.eventType && event.hook_event_type !== props.filters.eventType) {
+  if (props.filters.eventTypes?.size && !props.filters.eventTypes.has(event.hook_event_type)) {
+    return false;
+  }
+  if (props.filters.agentTypes?.size && !props.filters.agentTypes.has(resolveAgentType(event))) {
     return false;
   }
   return true;

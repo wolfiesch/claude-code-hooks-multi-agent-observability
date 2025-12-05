@@ -101,6 +101,19 @@ export interface FilterOptions {
   agent_types: string[];
 }
 
+export interface FilterState {
+  sourceApp: string;
+  sessionId: string;
+  eventTypes: Set<string>;
+  agentTypes: Set<string>;
+}
+
+export interface FilterOption {
+  label: string;
+  value: string;
+  description?: string;
+}
+
 export interface WebSocketMessage {
   type: 'initial' | 'event' | 'hitl_response';
   data: HookEvent | HookEvent[] | HumanInTheLoopResponse;
