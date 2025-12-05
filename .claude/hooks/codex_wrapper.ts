@@ -33,6 +33,7 @@ interface EventPayload {
   exit_code?: number;
   duration_ms?: number;
   error_message?: string;
+  parent_session_id?: string;
 }
 
 /**
@@ -104,7 +105,13 @@ async function main() {
   const model = extractModel(codexArgs);
   const workingDir = process.cwd();
 
+  // Read parent session ID from environment (set by Claude Code when using /handoffcodex)
+  const parentSessionId = process.env.CLAUDE_PARENT_SESSION_ID;
+
   console.log(`[codex-tracked] Session ID: ${sessionId}`);
+  if (parentSessionId) {
+    console.log(`[codex-tracked] Parent Session ID: ${parentSessionId}`);
+  }
   console.log(`[codex-tracked] Command: ${fullCommand.join(' ')}`);
 
   // Emit TaskStart event
@@ -113,7 +120,8 @@ async function main() {
     command: fullCommand,
     model,
     working_dir: workingDir,
-    start_time: startTime
+    start_time: startTime,
+    parent_session_id: parentSessionId
   };
 
   await sendEvent(sessionId, 'TaskStart', startPayload);
@@ -152,7 +160,8 @@ async function main() {
       start_time: startTime,
       end_time: endTime,
       exit_code: exitCode,
-      duration_ms: durationMs
+      duration_ms: durationMs,
+      parent_session_id: parentSessionId
     };
 
     await sendEvent(sessionId, 'TaskComplete', completePayload);
@@ -166,7 +175,8 @@ async function main() {
       end_time: endTime,
       exit_code: exitCode,
       duration_ms: durationMs,
-      error_message: `Codex exited with code ${exitCode}`
+      error_message: `Codex exited with code ${exitCode}`,
+      parent_session_id: parentSessionId
     };
 
     await sendEvent(sessionId, 'TaskError', errorPayload);

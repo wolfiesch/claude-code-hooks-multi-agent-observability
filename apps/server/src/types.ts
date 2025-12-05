@@ -51,6 +51,7 @@ export interface HookEvent {
   // NEW: Multi-agent support
   agent_type?: AgentType | string;  // Allow custom agent types
   agent_version?: string;
+  parent_session_id?: string;  // For parent-child agent tracking
 }
 
 export interface FilterOptions {
