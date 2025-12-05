@@ -1,0 +1,13 @@
+#!/bin/bash
+#
+# Codex CLI with Observability Tracking
+#
+# This script wraps the Codex CLI to emit tracking events.
+# Usage: codex-tracked exec -m gpt-5.1-codex-max "your task"
+#
+
+# Get the directory where this script lives
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Execute the TypeScript wrapper with Bun
+exec bun "${SCRIPT_DIR}/codex_wrapper.ts" "$@"
