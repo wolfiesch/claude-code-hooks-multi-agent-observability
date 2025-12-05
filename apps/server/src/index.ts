@@ -1,4 +1,5 @@
-import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse } from './db';
+import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, searchEvents, getSessionEvents } from './db';
+import type { SearchParams } from './db';
 import type { HookEvent, HumanInTheLoopResponse } from './types';
 import { calculateCost, extractTokensFromPayload } from './cost-calculator';
 import { 
@@ -193,6 +194,56 @@ const server = Bun.serve({
       }
 
       return new Response(JSON.stringify(events), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /events/search - Full-text search with filters
+    if (url.pathname === '/events/search' && req.method === 'GET') {
+      const params: SearchParams = {
+        q: url.searchParams.get('q') || undefined,
+        from: url.searchParams.get('from') ? parseInt(url.searchParams.get('from')!) : undefined,
+        to: url.searchParams.get('to') ? parseInt(url.searchParams.get('to')!) : undefined,
+        agent_type: url.searchParams.get('agent_type') || undefined,
+        event_type: url.searchParams.get('event_type') || undefined,
+        session_id: url.searchParams.get('session_id') || undefined,
+        limit: url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : 500
+      };
+
+      const results = searchEvents(params);
+
+      return new Response(JSON.stringify({
+        events: results,
+        total: results.length,
+        query: params
+      }), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /events/session/:sessionId - Get all events for session replay
+    if (url.pathname.startsWith('/events/session/') && req.method === 'GET') {
+      const sessionId = url.pathname.split('/events/session/')[1];
+
+      if (!sessionId) {
+        return new Response(JSON.stringify({ error: 'Session ID is required' }), {
+          status: 400,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const events = getSessionEvents(sessionId);
+
+      return new Response(JSON.stringify({
+        session_id: sessionId,
+        event_count: events.length,
+        duration_ms: events.length > 1
+          ? events[events.length - 1].timestamp - events[0].timestamp
+          : 0,
+        start_time: events.length > 0 ? events[0].timestamp : null,
+        end_time: events.length > 0 ? events[events.length - 1].timestamp : null,
+        events
+      }), {
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }

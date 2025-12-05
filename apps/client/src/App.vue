@@ -42,13 +42,34 @@
             <span class="text-2xl mobile:text-base">🗑️</span>
           </button>
 
+          <!-- Search Toggle Button -->
+          <button
+            @click="showSearch = !showSearch"
+            class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+            :class="{ 'ring-2 ring-white': showSearch }"
+            :title="showSearch ? 'Hide search' : 'Show search'"
+          >
+            <span class="text-2xl mobile:text-base">&#128269;</span>
+          </button>
+
+          <!-- Replay Toggle Button -->
+          <button
+            @click="showReplay = !showReplay"
+            class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+            :class="{ 'ring-2 ring-white': showReplay }"
+            :title="showReplay ? 'Hide replay' : 'Session replay'"
+          >
+            <span class="text-2xl mobile:text-base">&#128250;</span>
+          </button>
+
           <!-- Filters Toggle Button -->
           <button
             @click="showFilters = !showFilters"
             class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+            :class="{ 'ring-2 ring-white': showFilters }"
             :title="showFilters ? 'Hide filters' : 'Show filters'"
           >
-            <span class="text-2xl mobile:text-base">📊</span>
+            <span class="text-2xl mobile:text-base">&#128202;</span>
           </button>
 
           <!-- Theme Manager Button -->
@@ -78,12 +99,25 @@
       </div>
     </ErrorBoundary>
 
+    <!-- Search Panel -->
+    <SearchPanel
+      v-if="showSearch"
+      class="short:hidden"
+      v-model="searchResults"
+      @search="handleSearchResults"
+      @clear="handleSearchClear"
+    />
+
     <!-- Filters -->
     <FilterPanel
       v-if="showFilters"
       class="short:hidden"
       :filters="filters"
-      @update:filters="filters = $event"
+      :source-app-options="availableSourceApps"
+      :session-id-options="availableSessionIds"
+      :agent-type-options="availableAgentTypes"
+      :event-type-options="availableEventTypes"
+      @update:filters="updateFilters"
     />
     
     <!-- Live Pulse Chart -->
@@ -94,9 +128,12 @@
       <LivePulseChart
         :events="events"
         :filters="filters"
+        :agent-type-options="availableAgentTypes"
+        :event-type-options="availableEventTypes"
         @update-unique-apps="uniqueAppNames = $event"
         @update-all-apps="allAppNames = $event"
         @update-time-range="currentTimeRange = $event"
+        @update-filters="updateFilters"
       />
     </ErrorBoundary>
 
@@ -153,6 +190,17 @@
       @close="showThemeManager = false"
     />
 
+    <!-- Session Replay Modal -->
+    <div
+      v-if="showReplay"
+      class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      @click.self="showReplay = false"
+    >
+      <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <SessionReplay @close="showReplay = false" />
+      </div>
+    </div>
+
     <!-- Toast Notifications -->
     <ToastNotification
       v-for="(toast, index) in toasts"
@@ -167,7 +215,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
-import type { TimeRange } from './types';
+import type { TimeRange, FilterState } from './types';
 import { useWebSocket } from './composables/useWebSocket';
 import { useThemes } from './composables/useThemes';
 import { useEventColors } from './composables/useEventColors';
@@ -183,6 +231,8 @@ import EnvironmentInfoPanel from './components/EnvironmentInfoPanel.vue';
 import TodoProgressWidget from './components/TodoProgressWidget.vue';
 import SessionCostTracker from './components/SessionCostTracker.vue';
 import ErrorBoundary from './components/ErrorBoundary.vue';
+import SearchPanel from './components/SearchPanel.vue';
+import SessionReplay from './components/SessionReplay.vue';
 import { WS_URL } from './config';
 
 // WebSocket connection
@@ -195,17 +245,20 @@ useThemes();
 const { getHexColorForApp } = useEventColors();
 
 // Filters
-const filters = ref({
+const filters = ref<FilterState>({
   sourceApp: '',
   sessionId: '',
-  eventType: '',
-  agentType: ''
+  eventTypes: new Set<string>(),
+  agentTypes: new Set<string>()
 });
 
 // UI state
 const stickToBottom = ref(true);
 const showThemeManager = ref(false);
 const showFilters = ref(false);
+const showSearch = ref(false);
+const showReplay = ref(false);
+const searchResults = ref<any[]>([]);
 const uniqueAppNames = ref<string[]>([]); // Apps active in current time window
 const allAppNames = ref<string[]>([]); // All apps ever seen in session
 const selectedAgentLanes = ref<string[]>([]);
@@ -245,6 +298,69 @@ const sessionDuration = computed(() => {
   const latestEvent = events.value[events.value.length - 1];
   return latestEvent.session?.sessionDuration || 0;
 });
+
+const resolveAgentType = (event: { agent_type?: string; source_app: string }) => {
+  return event.agent_type || event.source_app || 'unknown';
+};
+
+const availableAgentTypes = computed(() => {
+  const types = new Set<string>();
+  events.value.forEach(event => {
+    const type = resolveAgentType(event);
+    if (type) {
+      types.add(type);
+    }
+  });
+  return Array.from(types).sort();
+});
+
+const availableEventTypes = computed(() => {
+  const types = new Set<string>();
+  events.value.forEach(event => {
+    if (!event.hook_event_type) return;
+    if (event.hook_event_type === 'refresh' || event.hook_event_type === 'initial') return;
+    types.add(event.hook_event_type);
+  });
+  return Array.from(types).sort();
+});
+
+const availableSourceApps = computed(() => {
+  const apps = new Set<string>();
+  events.value.forEach(event => {
+    if (event.source_app) {
+      apps.add(event.source_app);
+    }
+  });
+  return Array.from(apps).sort();
+});
+
+const availableSessionIds = computed(() => {
+  const sessions = new Set<string>();
+  events.value.forEach(event => {
+    if (event.session_id) {
+      sessions.add(event.session_id);
+    }
+  });
+  return Array.from(sessions).sort();
+});
+
+const updateFilters = (next: FilterState) => {
+  filters.value = {
+    sourceApp: next.sourceApp,
+    sessionId: next.sessionId,
+    eventTypes: new Set(next.eventTypes),
+    agentTypes: new Set(next.agentTypes)
+  };
+};
+
+const clearAllFilters = () => {
+  updateFilters({
+    sourceApp: '',
+    sessionId: '',
+    eventTypes: new Set<string>(),
+    agentTypes: new Set<string>()
+  });
+};
 
 // Watch for new agents and show toast
 watch(uniqueAppNames, (newAppNames) => {
@@ -311,12 +427,23 @@ const handleClearClick = () => {
   selectedAgentLanes.value = [];
   toasts.value = [];
   seenAgents.clear();
+  clearAllFilters();
 };
 
 // Debug handler for theme manager
 const handleThemeManagerClick = () => {
   console.log('Theme manager button clicked!');
   showThemeManager.value = true;
+};
+
+// Search handlers
+const handleSearchResults = (results: any[]) => {
+  searchResults.value = results;
+  console.log(`Search returned ${results.length} results`);
+};
+
+const handleSearchClear = () => {
+  searchResults.value = [];
 };
 
 // Cleanup stale selected agent lanes periodically

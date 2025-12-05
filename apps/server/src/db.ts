@@ -200,6 +200,52 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_themes_createdAt ON themes(createdAt)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_shares_token ON theme_shares(shareToken)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_ratings_theme ON theme_ratings(themeId)');
+
+  // Create FTS5 virtual table for full-text search
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+        payload,
+        summary,
+        chat,
+        content='events',
+        content_rowid='id'
+      )
+    `);
+
+    // Populate FTS table with existing data
+    db.exec(`
+      INSERT OR IGNORE INTO events_fts(rowid, payload, summary, chat)
+      SELECT id, payload, COALESCE(summary, ''), COALESCE(chat, '') FROM events
+    `);
+
+    // Create triggers to keep FTS in sync
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events BEGIN
+        INSERT INTO events_fts(rowid, payload, summary, chat)
+        VALUES (new.id, new.payload, COALESCE(new.summary, ''), COALESCE(new.chat, ''));
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE ON events BEGIN
+        UPDATE events_fts SET
+          payload = new.payload,
+          summary = COALESCE(new.summary, ''),
+          chat = COALESCE(new.chat, '')
+        WHERE rowid = old.id;
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS events_fts_delete AFTER DELETE ON events BEGIN
+        DELETE FROM events_fts WHERE rowid = old.id;
+      END
+    `);
+  } catch (error) {
+    console.log('FTS5 table setup:', error instanceof Error ? error.message : 'Unknown error');
+    // FTS5 may already exist or SQLite version may not support it
+  }
 }
 
 export function getDatabase(): Database {
@@ -507,6 +553,226 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
     parent_session_id: row.parent_session_id || undefined,
     git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
   };
+}
+
+// Search parameters interface
+export interface SearchParams {
+  q?: string;           // Search query
+  from?: number;        // Start timestamp (ms)
+  to?: number;          // End timestamp (ms)
+  agent_type?: string;  // Filter by agent
+  event_type?: string;  // Filter by event type
+  session_id?: string;  // Filter by session
+  limit?: number;       // Max results (default 500)
+}
+
+// Full-text search function
+export function searchEvents(params: SearchParams): HookEvent[] {
+  let sql: string;
+  const values: any[] = [];
+  const conditions: string[] = [];
+
+  // Full-text search using FTS5
+  if (params.q) {
+    // Use FTS5 MATCH for full-text search
+    sql = `
+      SELECT e.id, e.source_app, e.session_id, e.hook_event_type, e.payload, e.chat, e.summary, e.timestamp, e.humanInTheLoop, e.humanInTheLoopStatus, e.model_name, e.input_tokens, e.output_tokens, e.cost_usd, e.git, e.session, e.environment, e.toolMetadata, e.sessionStats, e.workflow, e.agent_type, e.agent_version, e.parent_session_id, e.git_stats
+      FROM events e
+      JOIN events_fts ON e.id = events_fts.rowid
+      WHERE events_fts MATCH ?
+    `;
+    // FTS5 query - escape special characters and wrap in quotes for literal search
+    const escapedQuery = params.q.replace(/"/g, '""');
+    values.push(`"${escapedQuery}"`);
+  } else {
+    sql = `
+      SELECT e.id, e.source_app, e.session_id, e.hook_event_type, e.payload, e.chat, e.summary, e.timestamp, e.humanInTheLoop, e.humanInTheLoopStatus, e.model_name, e.input_tokens, e.output_tokens, e.cost_usd, e.git, e.session, e.environment, e.toolMetadata, e.sessionStats, e.workflow, e.agent_type, e.agent_version, e.parent_session_id, e.git_stats
+      FROM events e
+      WHERE 1=1
+    `;
+  }
+
+  // Time range filters
+  if (params.from) {
+    conditions.push('e.timestamp >= ?');
+    values.push(params.from);
+  }
+  if (params.to) {
+    conditions.push('e.timestamp <= ?');
+    values.push(params.to);
+  }
+
+  // Agent type filter
+  if (params.agent_type) {
+    conditions.push('e.agent_type = ?');
+    values.push(params.agent_type);
+  }
+
+  // Event type filter
+  if (params.event_type) {
+    conditions.push('e.hook_event_type = ?');
+    values.push(params.event_type);
+  }
+
+  // Session filter
+  if (params.session_id) {
+    conditions.push('e.session_id = ?');
+    values.push(params.session_id);
+  }
+
+  // Combine conditions
+  if (conditions.length > 0) {
+    sql += ' AND ' + conditions.join(' AND ');
+  }
+
+  // Sort by timestamp descending, limit results
+  const limit = params.limit || 500;
+  sql += ' ORDER BY e.timestamp DESC LIMIT ?';
+  values.push(limit);
+
+  try {
+    const rows = db.prepare(sql).all(...values) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      source_app: row.source_app,
+      session_id: row.session_id,
+      hook_event_type: row.hook_event_type,
+      payload: JSON.parse(row.payload),
+      chat: row.chat ? JSON.parse(row.chat) : undefined,
+      summary: row.summary || undefined,
+      timestamp: row.timestamp,
+      humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
+      humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
+      model_name: row.model_name || undefined,
+      input_tokens: row.input_tokens || undefined,
+      output_tokens: row.output_tokens || undefined,
+      cost_usd: row.cost_usd || undefined,
+      git: row.git ? JSON.parse(row.git) : undefined,
+      session: row.session ? JSON.parse(row.session) : undefined,
+      environment: row.environment ? JSON.parse(row.environment) : undefined,
+      toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
+      sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
+      workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
+      agent_type: row.agent_type || 'claude',
+      agent_version: row.agent_version || undefined,
+      parent_session_id: row.parent_session_id || undefined,
+      git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
+    }));
+  } catch (error) {
+    console.error('Search error:', error);
+    // Fallback to simple LIKE search if FTS5 fails
+    return searchEventsSimple(params);
+  }
+}
+
+// Fallback simple search using LIKE
+function searchEventsSimple(params: SearchParams): HookEvent[] {
+  let sql = `
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats
+    FROM events
+    WHERE 1=1
+  `;
+  const values: any[] = [];
+
+  if (params.q) {
+    sql += ' AND (payload LIKE ? OR summary LIKE ? OR chat LIKE ?)';
+    const searchTerm = `%${params.q}%`;
+    values.push(searchTerm, searchTerm, searchTerm);
+  }
+
+  if (params.from) {
+    sql += ' AND timestamp >= ?';
+    values.push(params.from);
+  }
+  if (params.to) {
+    sql += ' AND timestamp <= ?';
+    values.push(params.to);
+  }
+  if (params.agent_type) {
+    sql += ' AND agent_type = ?';
+    values.push(params.agent_type);
+  }
+  if (params.event_type) {
+    sql += ' AND hook_event_type = ?';
+    values.push(params.event_type);
+  }
+  if (params.session_id) {
+    sql += ' AND session_id = ?';
+    values.push(params.session_id);
+  }
+
+  const limit = params.limit || 500;
+  sql += ' ORDER BY timestamp DESC LIMIT ?';
+  values.push(limit);
+
+  const rows = db.prepare(sql).all(...values) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    hook_event_type: row.hook_event_type,
+    payload: JSON.parse(row.payload),
+    chat: row.chat ? JSON.parse(row.chat) : undefined,
+    summary: row.summary || undefined,
+    timestamp: row.timestamp,
+    humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
+    humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
+    model_name: row.model_name || undefined,
+    input_tokens: row.input_tokens || undefined,
+    output_tokens: row.output_tokens || undefined,
+    cost_usd: row.cost_usd || undefined,
+    git: row.git ? JSON.parse(row.git) : undefined,
+    session: row.session ? JSON.parse(row.session) : undefined,
+    environment: row.environment ? JSON.parse(row.environment) : undefined,
+    toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
+    sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
+    workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
+    agent_type: row.agent_type || 'claude',
+    agent_version: row.agent_version || undefined,
+    parent_session_id: row.parent_session_id || undefined,
+    git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
+  }));
+}
+
+// Get all events for a specific session (for replay)
+export function getSessionEvents(sessionId: string): HookEvent[] {
+  const sql = `
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats
+    FROM events
+    WHERE session_id = ?
+    ORDER BY timestamp ASC
+  `;
+
+  const rows = db.prepare(sql).all(sessionId) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    hook_event_type: row.hook_event_type,
+    payload: JSON.parse(row.payload),
+    chat: row.chat ? JSON.parse(row.chat) : undefined,
+    summary: row.summary || undefined,
+    timestamp: row.timestamp,
+    humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
+    humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
+    model_name: row.model_name || undefined,
+    input_tokens: row.input_tokens || undefined,
+    output_tokens: row.output_tokens || undefined,
+    cost_usd: row.cost_usd || undefined,
+    git: row.git ? JSON.parse(row.git) : undefined,
+    session: row.session ? JSON.parse(row.session) : undefined,
+    environment: row.environment ? JSON.parse(row.environment) : undefined,
+    toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
+    sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
+    workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
+    agent_type: row.agent_type || 'claude',
+    agent_version: row.agent_version || undefined,
+    parent_session_id: row.parent_session_id || undefined,
+    git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
+  }));
 }
 
 export { db };
