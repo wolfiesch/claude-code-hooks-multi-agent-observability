@@ -270,7 +270,7 @@ export function getFilterOptions(): FilterOptions {
 
 export function getRecentEvents(limit: number = 300): HookEvent[] {
   const stmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats
     FROM events
     ORDER BY timestamp DESC
     LIMIT ?
@@ -300,7 +300,9 @@ export function getRecentEvents(limit: number = 300): HookEvent[] {
     sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
     workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
     agent_type: row.agent_type || 'claude',
-    agent_version: row.agent_version || undefined
+    agent_version: row.agent_version || undefined,
+    parent_session_id: row.parent_session_id || undefined,
+    git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
   })).reverse();
 }
 
@@ -471,7 +473,7 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
   stmt.run(JSON.stringify(status), id);
 
   const selectStmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats
     FROM events
     WHERE id = ?
   `);
@@ -501,7 +503,9 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
     sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
     workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
     agent_type: row.agent_type || 'claude',
-    agent_version: row.agent_version || undefined
+    agent_version: row.agent_version || undefined,
+    parent_session_id: row.parent_session_id || undefined,
+    git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
   };
 }
 

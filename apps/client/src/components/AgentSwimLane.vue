@@ -53,6 +53,18 @@
           </span>
         </div>
         <div
+          v-if="gitStats"
+          class="git-stats-badge flex items-center gap-1.5 px-2 py-2 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm min-h-[28px]"
+          @mouseover="hoveredGitStats = true"
+          @mouseleave="hoveredGitStats = false"
+          :title="`Git changes: ${gitStats.files_changed} files, +${gitStats.insertions}/-${gitStats.deletions} lines`"
+        >
+          <span class="text-base w-4 flex-shrink-0">📝</span>
+          <span class="text-xs font-bold" :class="hoveredGitStats ? 'min-w-[100px]' : ''">
+            {{ hoveredGitStats ? `${gitStats.files_changed} files, +${gitStats.insertions}/-${gitStats.deletions}` : `${gitStats.files_changed} 📄` }}
+          </span>
+        </div>
+        <div
           class="avg-time-badge flex items-center gap-1.5 px-2 py-2 bg-[var(--theme-bg-tertiary)] rounded-lg border border-[var(--theme-border-primary)] shadow-sm min-h-[28px]"
           @mouseover="hoveredAvgTime = true"
           @mouseleave="hoveredAvgTime = false"
@@ -122,6 +134,7 @@ const chartHeight = 80;
 const hoveredEventCount = ref(false);
 const hoveredToolCount = ref(false);
 const hoveredAvgTime = ref(false);
+const hoveredGitStats = ref(false);
 
 // Format gap time in ms to readable string (e.g., "125ms" or "1.2s")
 const formatGap = (gapMs: number): string => {
@@ -194,6 +207,30 @@ const toolCallCount = computed(() => {
     const codexTasks = dp.eventTypes?.['TaskStart'] || 0;
     return sum + claudeTools + codexTasks;
   }, 0);
+});
+
+// Aggregate git stats from Codex TaskComplete events
+const gitStats = computed(() => {
+  const [targetApp, targetSession] = props.agentName.split(':');
+  const codexEvents = props.events
+    .filter(e =>
+      e.source_app === targetApp &&
+      e.session_id.slice(0, 8) === targetSession &&
+      e.hook_event_type === 'TaskComplete' &&
+      e.git_stats
+    );
+
+  if (codexEvents.length === 0) return null;
+
+  // Sum up git stats from all TaskComplete events
+  return codexEvents.reduce((acc, event) => {
+    const stats = event.git_stats!;
+    return {
+      files_changed: acc.files_changed + stats.files_changed,
+      insertions: acc.insertions + stats.insertions,
+      deletions: acc.deletions + stats.deletions
+    };
+  }, { files_changed: 0, insertions: 0, deletions: 0 });
 });
 
 const chartAriaLabel = computed(() => {

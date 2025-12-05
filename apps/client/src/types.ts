@@ -28,6 +28,15 @@ export interface HumanInTheLoopStatus {
 // Agent type enumeration for extensibility
 export type AgentType = 'claude' | 'codex' | 'gemini' | 'custom';
 
+// Git stats for Codex tracking
+export interface GitStats {
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+  before_summary: string;
+  after_summary: string;
+}
+
 export interface HookEvent {
   id?: number;
   source_app: string;
@@ -82,6 +91,7 @@ export interface HookEvent {
   agent_type?: AgentType | string;  // Allow custom agent types
   agent_version?: string;
   parent_session_id?: string;  // For parent-child agent tracking
+  git_stats?: GitStats;  // Git statistics for Codex tracking
 }
 
 export interface FilterOptions {
