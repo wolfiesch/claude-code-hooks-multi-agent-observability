@@ -98,6 +98,101 @@ To integrate the observability hooks into your projects:
 
 Now your project will send events to the observability system whenever Claude Code performs actions.
 
+### Global Cross-Repo Tracking (Recommended)
+
+To track Claude Code agents **across all repositories** on your machine (including sub-agents launched in other repos), configure global hooks:
+
+**Why Global Hooks?**
+- ✅ Track agents in **every repository** automatically
+- ✅ Monitor sub-agents launched by Task tool in different repos
+- ✅ Capture model information from any Claude Code session
+- ✅ Centralized hook management (no need to copy `.claude/` to each project)
+
+**Automated Setup (Recommended):**
+
+```bash
+# Run the setup script from this project directory
+./scripts/setup-global-hooks.sh
+```
+
+The script will:
+- ✅ Automatically backup your existing global settings
+- ✅ Merge observability hooks with any existing global hooks
+- ✅ Use absolute paths (no manual path replacement needed)
+- ✅ Safely handle existing configurations
+
+**Manual Setup:**
+
+1. **Edit your global Claude Code settings** (`~/.claude/settings.json`):
+
+   Add observability hooks that point to this project's scripts:
+
+   ```json
+   {
+     "hooks": {
+       "SessionStart": [{
+         "matcher": ".*",
+         "hooks": [{
+           "type": "command",
+           "command": "uv run /ABSOLUTE/PATH/TO/claude-code-hooks-multi-agent-observability/.claude/hooks/send_event.py --source-app claude-global --event-type SessionStart"
+         }]
+       }],
+       "PreToolUse": [{
+         "matcher": ".*",
+         "hooks": [{
+           "type": "command",
+           "command": "uv run /ABSOLUTE/PATH/TO/claude-code-hooks-multi-agent-observability/.claude/hooks/send_event.py --source-app claude-global --event-type PreToolUse --summarize"
+         }]
+       }],
+       "PostToolUse": [{
+         "matcher": ".*",
+         "hooks": [{
+           "type": "command",
+           "command": "uv run /ABSOLUTE/PATH/TO/claude-code-hooks-multi-agent-observability/.claude/hooks/send_event.py --source-app claude-global --event-type PostToolUse --summarize"
+         }]
+       }],
+       "Stop": [{
+         "matcher": ".*",
+         "hooks": [{
+           "type": "command",
+           "command": "uv run /ABSOLUTE/PATH/TO/claude-code-hooks-multi-agent-observability/.claude/hooks/send_event.py --source-app claude-global --event-type Stop"
+         }]
+       }],
+       "SubagentStop": [{
+         "matcher": ".*",
+         "hooks": [{
+           "type": "command",
+           "command": "uv run /ABSOLUTE/PATH/TO/claude-code-hooks-multi-agent-observability/.claude/hooks/send_event.py --source-app claude-global --event-type SubagentStop"
+         }]
+       }]
+     }
+   }
+   ```
+
+   Replace `/ABSOLUTE/PATH/TO/` with the full path to this project directory.
+
+2. **Backup existing global settings** (if any):
+   ```bash
+   cp ~/.claude/settings.json ~/.claude/settings.json.backup
+   ```
+
+3. **Merge with existing hooks** (if you have other global hooks):
+
+   Global hooks and project-specific hooks work together. If you already have hooks in `~/.claude/settings.json`, add the observability hooks to the existing hook arrays rather than replacing them.
+
+**How It Works:**
+
+Claude Code merges hooks from multiple configuration levels:
+```
+Global (~/.claude/settings.json)
+  ↓ merged with ↓
+Project (.claude/settings.json)
+  ↓ all hooks execute ↓
+Observability Dashboard
+```
+
+**Now every Claude Code agent on your machine** (main session or sub-agent) will automatically send events to the dashboard, regardless of which repository it's running in!
+
 ## 🚀 Quick Start
 
 You can quickly view how this works by running this repositories .claude setup.
