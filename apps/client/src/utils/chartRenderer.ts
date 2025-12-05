@@ -178,58 +178,64 @@ export class ChartRenderer {
       this.ctx.fill();
       this.ctx.restore();
       
-      // Draw emoji labels with tooltip background
+      // Draw emoji labels with tooltip background (only if there's enough space)
       if (formatLabel && point.eventTypes && Object.keys(point.eventTypes).length > 0 && barHeight > 10) {
         const label = formatLabel(point.eventTypes);
         if (label) {
           this.ctx.save();
           this.ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
-          
+
           // Measure text first to get accurate dimensions
           const metrics = this.ctx.measureText(label);
           const padding = 8;
           const bgWidth = metrics.width + padding * 2;
           const bgHeight = 30;
-          
-          // Position label vertically centered on the bar
-          const labelX = x + barWidth / 2;
-          const labelY = y + barHeight / 2;
-          
-          // Draw tooltip background
-          const bgX = labelX - bgWidth / 2;
-          const bgY = labelY - bgHeight / 2;
-          
-          // Draw rounded rectangle background - lighter in dark mode
-          const isDark = document.documentElement.classList.contains('dark');
-          this.ctx.fillStyle = isDark ? 'rgba(75, 85, 99, 0.95)' : 'rgba(0, 0, 0, 0.85)';
-          this.ctx.beginPath();
-          if ('roundRect' in this.ctx && typeof (this.ctx as any).roundRect === 'function') {
-            (this.ctx as any).roundRect(bgX, bgY, bgWidth, bgHeight, 7);
-          } else {
-            // Fallback for browsers without roundRect support
-            const radius = 7;
-            this.ctx.moveTo(bgX + radius, bgY);
-            this.ctx.lineTo(bgX + bgWidth - radius, bgY);
-            this.ctx.arcTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius, radius);
-            this.ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
-            this.ctx.arcTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight, radius);
-            this.ctx.lineTo(bgX + radius, bgY + bgHeight);
-            this.ctx.arcTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius, radius);
-            this.ctx.lineTo(bgX, bgY + radius);
-            this.ctx.arcTo(bgX, bgY, bgX + radius, bgY, radius);
-            this.ctx.closePath();
+
+          // Calculate available horizontal space (bar width + small margin for adjacent bars)
+          const availableWidth = totalBarWidth * 1.5; // Allow slight overlap into adjacent bar space
+
+          // Only draw if the label fits within available space
+          if (bgWidth <= availableWidth) {
+            // Position label vertically centered on the bar
+            const labelX = x + barWidth / 2;
+            const labelY = y + barHeight / 2;
+
+            // Draw tooltip background
+            const bgX = labelX - bgWidth / 2;
+            const bgY = labelY - bgHeight / 2;
+
+            // Draw rounded rectangle background - lighter in dark mode
+            const isDark = document.documentElement.classList.contains('dark');
+            this.ctx.fillStyle = isDark ? 'rgba(75, 85, 99, 0.95)' : 'rgba(0, 0, 0, 0.85)';
+            this.ctx.beginPath();
+            if ('roundRect' in this.ctx && typeof (this.ctx as any).roundRect === 'function') {
+              (this.ctx as any).roundRect(bgX, bgY, bgWidth, bgHeight, 7);
+            } else {
+              // Fallback for browsers without roundRect support
+              const radius = 7;
+              this.ctx.moveTo(bgX + radius, bgY);
+              this.ctx.lineTo(bgX + bgWidth - radius, bgY);
+              this.ctx.arcTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius, radius);
+              this.ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
+              this.ctx.arcTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight, radius);
+              this.ctx.lineTo(bgX + radius, bgY + bgHeight);
+              this.ctx.arcTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius, radius);
+              this.ctx.lineTo(bgX, bgY + radius);
+              this.ctx.arcTo(bgX, bgY, bgX + radius, bgY, radius);
+              this.ctx.closePath();
+            }
+            this.ctx.fill();
+
+            // Draw text with proper centering
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.textAlign = 'left';
+            this.ctx.textBaseline = 'middle';
+
+            // Calculate the actual text starting position (left-aligned within the box)
+            const textX = bgX + padding;
+            const textY = labelY;
+            this.ctx.fillText(label, textX, textY);
           }
-          this.ctx.fill();
-          
-          // Draw text with proper centering
-          this.ctx.fillStyle = '#ffffff';
-          this.ctx.textAlign = 'left';
-          this.ctx.textBaseline = 'middle';
-          
-          // Calculate the actual text starting position (left-aligned within the box)
-          const textX = bgX + padding;
-          const textY = labelY;
-          this.ctx.fillText(label, textX, textY);
           this.ctx.restore();
         }
       }
