@@ -25,6 +25,9 @@ export interface HumanInTheLoopStatus {
   response?: HumanInTheLoopResponse;
 }
 
+// Agent type enumeration for extensibility
+export type AgentType = 'claude' | 'codex' | 'gemini' | 'custom';
+
 export interface HookEvent {
   id?: number;
   source_app: string;
@@ -44,12 +47,17 @@ export interface HookEvent {
   input_tokens?: number;
   output_tokens?: number;
   cost_usd?: number;
+
+  // NEW: Multi-agent support
+  agent_type?: AgentType | string;  // Allow custom agent types
+  agent_version?: string;
 }
 
 export interface FilterOptions {
   source_apps: string[];
   session_ids: string[];
   hook_event_types: string[];
+  agent_types: string[];
 }
 
 // Theme-related interfaces for server-side storage and API

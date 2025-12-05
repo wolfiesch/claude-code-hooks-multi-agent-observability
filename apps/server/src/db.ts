@@ -109,15 +109,28 @@ export function initDatabase(): void {
     if (!hasWorkflowColumn) {
       db.exec('ALTER TABLE events ADD COLUMN workflow TEXT');
     }
+
+    // Check if agent_type column exists, add it if not (for multi-agent support)
+    const hasAgentTypeColumn = columns.some((col: any) => col.name === 'agent_type');
+    if (!hasAgentTypeColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN agent_type TEXT DEFAULT "claude"');
+    }
+
+    // Check if agent_version column exists, add it if not (for multi-agent support)
+    const hasAgentVersionColumn = columns.some((col: any) => col.name === 'agent_version');
+    if (!hasAgentVersionColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN agent_version TEXT');
+    }
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
-  
+
   // Create indexes for common queries
   db.exec('CREATE INDEX IF NOT EXISTS idx_source_app ON events(source_app)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_session_id ON events(session_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_hook_event_type ON events(hook_event_type)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_agent_type ON events(agent_type)');
   
   // Create themes table
   db.exec(`
@@ -178,8 +191,8 @@ export function initDatabase(): void {
 
 export function insertEvent(event: HookEvent): HookEvent {
   const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const timestamp = event.timestamp || Date.now();
@@ -209,7 +222,9 @@ export function insertEvent(event: HookEvent): HookEvent {
     (event as any).environment ? JSON.stringify((event as any).environment) : null,
     (event as any).toolMetadata ? JSON.stringify((event as any).toolMetadata) : null,
     (event as any).sessionStats ? JSON.stringify((event as any).sessionStats) : null,
-    (event as any).workflow ? JSON.stringify((event as any).workflow) : null
+    (event as any).workflow ? JSON.stringify((event as any).workflow) : null,
+    event.agent_type || 'claude',
+    event.agent_version || null
   );
 
   return {
@@ -224,17 +239,19 @@ export function getFilterOptions(): FilterOptions {
   const sourceApps = db.prepare('SELECT DISTINCT source_app FROM events ORDER BY source_app').all() as { source_app: string }[];
   const sessionIds = db.prepare('SELECT DISTINCT session_id FROM events ORDER BY session_id DESC LIMIT 300').all() as { session_id: string }[];
   const hookEventTypes = db.prepare('SELECT DISTINCT hook_event_type FROM events ORDER BY hook_event_type').all() as { hook_event_type: string }[];
-  
+  const agentTypes = db.prepare('SELECT DISTINCT agent_type FROM events WHERE agent_type IS NOT NULL ORDER BY agent_type').all() as { agent_type: string }[];
+
   return {
     source_apps: sourceApps.map(row => row.source_app),
     session_ids: sessionIds.map(row => row.session_id),
-    hook_event_types: hookEventTypes.map(row => row.hook_event_type)
+    hook_event_types: hookEventTypes.map(row => row.hook_event_type),
+    agent_types: agentTypes.map(row => row.agent_type)
   };
 }
 
 export function getRecentEvents(limit: number = 300): HookEvent[] {
   const stmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version
     FROM events
     ORDER BY timestamp DESC
     LIMIT ?
@@ -262,7 +279,9 @@ export function getRecentEvents(limit: number = 300): HookEvent[] {
     environment: row.environment ? JSON.parse(row.environment) : undefined,
     toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
     sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
-    workflow: row.workflow ? JSON.parse(row.workflow) : undefined
+    workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
+    agent_type: row.agent_type || 'claude',
+    agent_version: row.agent_version || undefined
   })).reverse();
 }
 
@@ -433,7 +452,7 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
   stmt.run(JSON.stringify(status), id);
 
   const selectStmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version
     FROM events
     WHERE id = ?
   `);
@@ -461,7 +480,9 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
     environment: row.environment ? JSON.parse(row.environment) : undefined,
     toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
     sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
-    workflow: row.workflow ? JSON.parse(row.workflow) : undefined
+    workflow: row.workflow ? JSON.parse(row.workflow) : undefined,
+    agent_type: row.agent_type || 'claude',
+    agent_version: row.agent_version || undefined
   };
 }
 

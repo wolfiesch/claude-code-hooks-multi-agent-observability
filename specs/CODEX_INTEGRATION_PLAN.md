@@ -27,8 +27,8 @@ This plan details the integration of OpenAI Codex CLI agent tracking into the ex
 
 | Phase | Description | Status | Assignee | Started | Completed | Notes |
 |-------|-------------|--------|----------|---------|-----------|-------|
-| 0 | Pre-Implementation Setup | ⏳ | - | - | - | |
-| 1 | Backend Schema & API | ⏳ | - | - | - | |
+| 0 | Pre-Implementation Setup | ✅ | Claude Sonnet 4.5 | 5:22 PM | 5:23 PM | All systems healthy |
+| 1 | Backend Schema & API | ✅ | Claude Sonnet 4.5 | 5:24 PM | 5:40 PM | All tests passing, simplified schema |
 | 2 | Python Event Infrastructure | ⏳ | - | - | - | |
 | 3 | Codex Wrapper Implementation | ⏳ | - | - | - | |
 | 4 | Frontend UI Updates | ⏳ | - | - | - | Parallelizable |
@@ -81,10 +81,10 @@ Phase 3: Codex Wrapper ◄──────────────► Phase 4:
 
 | Task | Description | Status | Notes |
 |------|-------------|--------|-------|
-| 0.1 | Verify dashboard is running and healthy | ⏳ | |
-| 0.2 | Create feature branch `feature/codex-integration` | ⏳ | |
-| 0.3 | Verify Codex CLI is installed and authenticated | ⏳ | |
-| 0.4 | Backup current events.db | ⏳ | |
+| 0.1 | Verify dashboard is running and healthy | ✅ | Server: 4000, Frontend: 5173 |
+| 0.2 | Create feature branch `feature/codex-integration` | ✅ | Branch created |
+| 0.3 | Verify Codex CLI is installed and authenticated | ✅ | v0.64.0 |
+| 0.4 | Backup current events.db | ✅ | events.db.backup-TIMESTAMP |
 
 ### Acceptance Criteria
 - [ ] Dashboard accessible at http://localhost:5173
@@ -625,6 +625,7 @@ cat ~/.claude/event_queue.jsonl
 | Timestamp | Phase | Change | Author |
 |-----------|-------|--------|--------|
 | 2024-12-04 4:40 PM | Planning | Initial plan created | Claude Opus 4.5 |
+| 2024-12-04 5:40 PM | Phase 1 | Backend schema & API complete | Claude Sonnet 4.5 |
 | | | | |
 | | | | |
 | | | | |
@@ -635,9 +636,59 @@ cat ~/.claude/event_queue.jsonl
 
 _Use this section to record important decisions, blockers, or learnings during implementation._
 
-```
-[YYYY-MM-DD HH:MM] - Note here
-```
+### 2024-12-04 5:20 PM - Critical Analysis & Planned Deviations
+
+**Reviewed by:** Claude Sonnet 4.5
+**Status:** Ready to implement with improvements
+
+#### ✅ Plan Strengths
+- Extensible agent registry design supports future agents beyond Codex
+- Strong focus on backward compatibility
+- Clear dependency chain with smart parallelization
+- Comprehensive testing strategy
+
+#### 🔧 Planned Deviations (Quick Wins)
+
+1. **SIMPLIFICATION: Leverage existing model_name field**
+   - **Original:** Complex `agent_metadata` JSON with model, version, capabilities
+   - **Improved:** Reuse existing `model_name` field for agent model, add simple `agent_type` and `agent_version`
+   - **Rationale:** Reduces redundancy, leverages existing cost calculation infrastructure
+   - **Impact:** Simpler schema, less code changes
+
+2. **IMPROVEMENT: Follow existing DB migration pattern**
+   - **Original:** Migration strategy not specified
+   - **Improved:** Use existing runtime column check pattern from db.ts (lines 55-66)
+   - **Rationale:** Consistent with codebase patterns, no migration scripts needed
+   - **Impact:** Faster implementation, proven approach
+
+3. **SIMPLIFICATION: Start with simple wrapper, no output parsing**
+   - **Original:** Parse Codex output for tokens, cost, files modified (tasks 3.5-3.7)
+   - **Improved:** Initial MVP just tracks TaskStart/Complete with exit code
+   - **Rationale:** Output parsing is fragile and Codex format may change
+   - **Impact:** Faster MVP, can enhance later if Codex provides stable output format
+   - **Skip tasks:** 3.5, 3.6, 3.7 for MVP
+
+4. **IMPROVEMENT: Project-local event queue**
+   - **Original:** `~/.claude/event_queue.jsonl` (global)
+   - **Improved:** `.claude/data/event_queue.jsonl` (project-local)
+   - **Rationale:** Already have gitignored `.claude/data/` directory
+   - **Impact:** Better multi-project isolation
+
+5. **SIMPLIFICATION: Skip batch mode for MVP**
+   - **Original:** Task 2.6 - batch mode for bulk Codex events
+   - **Improved:** Single events only for MVP
+   - **Rationale:** Added complexity, unclear if needed
+   - **Impact:** Faster implementation, can add later if needed
+   - **Skip task:** 2.6
+
+6. **IMPROVEMENT: TypeScript wrapper instead of bash**
+   - **Original:** Shell script `codex_wrapper.sh`
+   - **Improved:** TypeScript/Bun script for better maintainability
+   - **Rationale:** Better error handling, type safety, easier to extend
+   - **Impact:** More robust, consistent with project stack
+
+#### 🎯 Implementation Priority
+Proceeding with **Phase 0** first, then sequential execution through phases with documented deviations above.
 
 ---
 

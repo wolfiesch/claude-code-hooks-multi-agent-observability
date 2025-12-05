@@ -183,7 +183,15 @@ const server = Bun.serve({
     // GET /events/recent - Get recent events
     if (url.pathname === '/events/recent' && req.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') || '300');
-      const events = getRecentEvents(limit);
+      const agentType = url.searchParams.get('agent_type');
+
+      let events = getRecentEvents(limit);
+
+      // Filter by agent_type if specified
+      if (agentType) {
+        events = events.filter(event => event.agent_type === agentType);
+      }
+
       return new Response(JSON.stringify(events), {
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
