@@ -39,6 +39,11 @@ export interface HookEvent {
   // NEW: Optional HITL data
   humanInTheLoop?: HumanInTheLoop;
   humanInTheLoopStatus?: HumanInTheLoopStatus;
+
+  // NEW: Cost tracking fields
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
 }
 
 export interface FilterOptions {

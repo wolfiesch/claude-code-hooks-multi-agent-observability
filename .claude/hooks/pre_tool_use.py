@@ -5,9 +5,19 @@
 
 import json
 import sys
+import os
 import re
 from pathlib import Path
 from utils.constants import ensure_session_log_dir
+
+# Add shared utilities to path for Tier 1 metadata
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'shared'))
+
+try:
+    from metadata_collector import MetadataCollector
+    TIER1_AVAILABLE = True
+except ImportError:
+    TIER1_AVAILABLE = False
 
 # Allowed directories where rm -rf is permitted
 ALLOWED_RM_DIRECTORIES = [
@@ -204,11 +214,21 @@ def main():
         
         # Append new data
         log_data.append(input_data)
-        
+
         # Write back to file with formatting
         with open(log_path, 'w') as f:
             json.dump(log_data, f, indent=2)
-        
+
+        # Tier 1: Record tool start for duration tracking
+        if TIER1_AVAILABLE:
+            try:
+                project_dir = os.environ.get('CLAUDE_PROJECT_DIR', os.getcwd())
+                collector = MetadataCollector(project_dir)
+                collector.record_tool_start(session_id, tool_name, tool_input)
+            except Exception:
+                # Silently fail to not block tool execution
+                pass
+
         sys.exit(0)
         
     except json.JSONDecodeError:

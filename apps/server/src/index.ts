@@ -1,5 +1,6 @@
 import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse } from './db';
 import type { HookEvent, HumanInTheLoopResponse } from './types';
+import { calculateCost, extractTokensFromPayload } from './cost-calculator';
 import { 
   createTheme, 
   updateThemeById, 
@@ -132,7 +133,19 @@ const server = Bun.serve({
             headers: { ...headers, 'Content-Type': 'application/json' }
           });
         }
-        
+
+        // Extract tokens from payload if not already provided
+        if (!event.input_tokens && !event.output_tokens) {
+          const tokens = extractTokensFromPayload(event.payload);
+          event.input_tokens = tokens.input_tokens;
+          event.output_tokens = tokens.output_tokens;
+        }
+
+        // Calculate cost if we have token counts
+        if (event.input_tokens !== undefined && event.output_tokens !== undefined) {
+          event.cost_usd = calculateCost(event.model_name, event.input_tokens, event.output_tokens);
+        }
+
         // Insert event into database
         const savedEvent = insertEvent(event);
         

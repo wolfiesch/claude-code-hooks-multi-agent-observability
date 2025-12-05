@@ -10,6 +10,11 @@
 """
 Multi-Agent Observability Hook Script
 Sends Claude Code hook events to the observability server.
+
+Enhanced with Tier 0 metadata collection:
+- Git context (branch, commit, dirty status, remote tracking)
+- Session context (start time, duration, model, working directory)
+- Environment context (OS, shell, Python/Node versions)
 """
 
 import json
@@ -19,8 +24,26 @@ import argparse
 import urllib.request
 import urllib.error
 from datetime import datetime
+
+# Add shared utilities to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'shared'))
+
 from utils.summarizer import generate_event_summary
 from utils.model_extractor import get_model_from_transcript
+from utils.constants import ensure_session_log_dir
+
+try:
+    from metadata_collector import MetadataCollector
+    METADATA_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import MetadataCollector: {e}", file=sys.stderr)
+    METADATA_AVAILABLE = False
+
+try:
+    from tool_metadata_parser import ToolMetadataParser
+    PARSER_AVAILABLE = True
+except ImportError:
+    PARSER_AVAILABLE = False
 
 def send_event_to_server(event_data, server_url='http://localhost:4000/events'):
     """Send event data to the observability server."""
@@ -75,6 +98,65 @@ def main():
     if transcript_path:
         model_name = get_model_from_transcript(session_id, transcript_path)
 
+    # Get project directory from environment
+    project_dir = os.environ.get('CLAUDE_PROJECT_DIR', os.getcwd())
+
+    # Collect Tier 0, Tier 1, and Tier 2 metadata
+    tier0_metadata = {}
+    tier1_metadata = {}
+    tier2_metadata = {}
+
+    if METADATA_AVAILABLE:
+        try:
+            collector = MetadataCollector(project_dir)
+            tier0_metadata = collector.collect_tier0_metadata(session_id)
+
+            # Increment tool count for PostToolUse events
+            if args.event_type == 'PostToolUse':
+                collector.increment_tool_count(session_id)
+
+            # Tier 1: Collect tool performance metadata
+            tool_name = input_data.get('tool_name', '')
+            tool_input = input_data.get('tool_input', {})
+            duration_ms = None
+
+            # For PostToolUse, try to read duration from temp file
+            if args.event_type == 'PostToolUse':
+                try:
+                    log_dir = ensure_session_log_dir(session_id)
+                    duration_file = log_dir / 'last_tool_duration.json'
+                    if duration_file.exists():
+                        with open(duration_file, 'r') as f:
+                            duration_data = json.load(f)
+                            if duration_data.get('tool_name') == tool_name:
+                                duration_ms = duration_data.get('duration_ms')
+                        # Clean up duration file after reading
+                        duration_file.unlink()
+                except Exception:
+                    pass
+
+            # Collect Tier 1 metadata (tool performance + session stats)
+            tier1_metadata = collector.collect_tier1_metadata(
+                session_id,
+                tool_name if tool_name else None,
+                tool_input if tool_input else None,
+                duration_ms
+            )
+
+            # Tier 2: Collect workflow intelligence metadata
+            tier2_metadata = collector.collect_tier2_metadata(
+                session_id,
+                tool_name if tool_name else None,
+                tool_input if tool_input else None
+            )
+
+            # Cleanup old sessions periodically (every 100 events)
+            import random
+            if random.randint(1, 100) == 1:
+                collector.cleanup_old_sessions()
+        except Exception as e:
+            print(f"Warning: Failed to collect metadata: {e}", file=sys.stderr)
+
     # Prepare event data for server
     event_data = {
         'source_app': args.source_app,
@@ -82,8 +164,16 @@ def main():
         'hook_event_type': args.event_type,
         'payload': input_data,
         'timestamp': int(datetime.now().timestamp() * 1000),
-        'model_name': model_name
+        'model_name': model_name,
+        # ✨ Add Tier 0 metadata (git, session, environment)
+        **tier0_metadata,
+        # ✨ Add Tier 1 metadata (tool performance + session stats)
+        **tier1_metadata
     }
+
+    # ✨ Add Tier 2 metadata (workflow intelligence) as nested object
+    if tier2_metadata:
+        event_data['workflow'] = tier2_metadata
     
     # Handle --add-chat option
     if args.add_chat and 'transcript_path' in input_data:

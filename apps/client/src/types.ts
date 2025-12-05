@@ -39,6 +39,41 @@ export interface HookEvent {
   // NEW: Optional HITL data
   humanInTheLoop?: HumanInTheLoop;
   humanInTheLoopStatus?: HumanInTheLoopStatus;
+
+  // Tier 0 metadata
+  environment?: {
+    os?: string;
+    osVersion?: string;
+    shell?: string;
+    pythonVersion?: string;
+    nodeVersion?: string;
+    workingDirectory?: string;
+  };
+
+  // Tier 1 metadata
+  session?: {
+    sessionId?: string;
+    sessionStart?: string;
+    sessionDuration?: number;
+    model?: string;
+  };
+
+  // Tier 2 metadata
+  workflow?: {
+    todoTracking?: {
+      totalTodos: number;
+      completedTodos: number;
+      inProgressTodos: number;
+      pendingTodos: number;
+      completionRate: number;
+      lastUpdate: string | null;
+    };
+  };
+
+  // Token and cost tracking
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
 }
 
 export interface FilterOptions {

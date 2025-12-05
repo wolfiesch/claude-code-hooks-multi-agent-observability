@@ -55,6 +55,60 @@ export function initDatabase(): void {
     if (!hasModelNameColumn) {
       db.exec('ALTER TABLE events ADD COLUMN model_name TEXT');
     }
+
+    // Check if input_tokens column exists, add it if not (for cost tracking)
+    const hasInputTokensColumn = columns.some((col: any) => col.name === 'input_tokens');
+    if (!hasInputTokensColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN input_tokens INTEGER');
+    }
+
+    // Check if output_tokens column exists, add it if not (for cost tracking)
+    const hasOutputTokensColumn = columns.some((col: any) => col.name === 'output_tokens');
+    if (!hasOutputTokensColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN output_tokens INTEGER');
+    }
+
+    // Check if cost_usd column exists, add it if not (for cost tracking)
+    const hasCostUsdColumn = columns.some((col: any) => col.name === 'cost_usd');
+    if (!hasCostUsdColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN cost_usd REAL');
+    }
+
+    // Check if git column exists, add it if not (for Tier 0 metadata)
+    const hasGitColumn = columns.some((col: any) => col.name === 'git');
+    if (!hasGitColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN git TEXT');
+    }
+
+    // Check if session column exists, add it if not (for Tier 0 metadata)
+    const hasSessionColumn = columns.some((col: any) => col.name === 'session');
+    if (!hasSessionColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN session TEXT');
+    }
+
+    // Check if environment column exists, add it if not (for Tier 0 metadata)
+    const hasEnvironmentColumn = columns.some((col: any) => col.name === 'environment');
+    if (!hasEnvironmentColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN environment TEXT');
+    }
+
+    // Check if toolMetadata column exists, add it if not (for Tier 1 metadata)
+    const hasToolMetadataColumn = columns.some((col: any) => col.name === 'toolMetadata');
+    if (!hasToolMetadataColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN toolMetadata TEXT');
+    }
+
+    // Check if sessionStats column exists, add it if not (for Tier 1 metadata)
+    const hasSessionStatsColumn = columns.some((col: any) => col.name === 'sessionStats');
+    if (!hasSessionStatsColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN sessionStats TEXT');
+    }
+
+    // Check if workflow column exists, add it if not (for Tier 2 metadata)
+    const hasWorkflowColumn = columns.some((col: any) => col.name === 'workflow');
+    if (!hasWorkflowColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN workflow TEXT');
+    }
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
@@ -124,8 +178,8 @@ export function initDatabase(): void {
 
 export function insertEvent(event: HookEvent): HookEvent {
   const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const timestamp = event.timestamp || Date.now();
@@ -146,7 +200,16 @@ export function insertEvent(event: HookEvent): HookEvent {
     timestamp,
     event.humanInTheLoop ? JSON.stringify(event.humanInTheLoop) : null,
     humanInTheLoopStatus ? JSON.stringify(humanInTheLoopStatus) : null,
-    event.model_name || null
+    event.model_name || null,
+    event.input_tokens || null,
+    event.output_tokens || null,
+    event.cost_usd || null,
+    (event as any).git ? JSON.stringify((event as any).git) : null,
+    (event as any).session ? JSON.stringify((event as any).session) : null,
+    (event as any).environment ? JSON.stringify((event as any).environment) : null,
+    (event as any).toolMetadata ? JSON.stringify((event as any).toolMetadata) : null,
+    (event as any).sessionStats ? JSON.stringify((event as any).sessionStats) : null,
+    (event as any).workflow ? JSON.stringify((event as any).workflow) : null
   );
 
   return {
@@ -171,7 +234,7 @@ export function getFilterOptions(): FilterOptions {
 
 export function getRecentEvents(limit: number = 300): HookEvent[] {
   const stmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow
     FROM events
     ORDER BY timestamp DESC
     LIMIT ?
@@ -190,7 +253,16 @@ export function getRecentEvents(limit: number = 300): HookEvent[] {
     timestamp: row.timestamp,
     humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
     humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
-    model_name: row.model_name || undefined
+    model_name: row.model_name || undefined,
+    input_tokens: row.input_tokens || undefined,
+    output_tokens: row.output_tokens || undefined,
+    cost_usd: row.cost_usd || undefined,
+    git: row.git ? JSON.parse(row.git) : undefined,
+    session: row.session ? JSON.parse(row.session) : undefined,
+    environment: row.environment ? JSON.parse(row.environment) : undefined,
+    toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
+    sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
+    workflow: row.workflow ? JSON.parse(row.workflow) : undefined
   })).reverse();
 }
 
@@ -361,7 +433,7 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
   stmt.run(JSON.stringify(status), id);
 
   const selectStmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow
     FROM events
     WHERE id = ?
   `);
@@ -380,7 +452,16 @@ export function updateEventHITLResponse(id: number, response: any): HookEvent | 
     timestamp: row.timestamp,
     humanInTheLoop: row.humanInTheLoop ? JSON.parse(row.humanInTheLoop) : undefined,
     humanInTheLoopStatus: row.humanInTheLoopStatus ? JSON.parse(row.humanInTheLoopStatus) : undefined,
-    model_name: row.model_name || undefined
+    model_name: row.model_name || undefined,
+    input_tokens: row.input_tokens || undefined,
+    output_tokens: row.output_tokens || undefined,
+    cost_usd: row.cost_usd || undefined,
+    git: row.git ? JSON.parse(row.git) : undefined,
+    session: row.session ? JSON.parse(row.session) : undefined,
+    environment: row.environment ? JSON.parse(row.environment) : undefined,
+    toolMetadata: row.toolMetadata ? JSON.parse(row.toolMetadata) : undefined,
+    sessionStats: row.sessionStats ? JSON.parse(row.sessionStats) : undefined,
+    workflow: row.workflow ? JSON.parse(row.workflow) : undefined
   };
 }
 
