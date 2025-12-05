@@ -249,6 +249,7 @@ claude-output.json
 specs/*
 !specs/plan_new_feature_sonnet45.md
 !specs/plan_new_feature_haiku45.md
+!specs/CODEX_INTEGRATION_PLAN.md
 
 # App docs - ignore everything
 app_docs/
