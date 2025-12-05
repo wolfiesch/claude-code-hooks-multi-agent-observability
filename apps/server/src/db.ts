@@ -201,6 +201,41 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_shares_token ON theme_shares(shareToken)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_ratings_theme ON theme_ratings(themeId)');
 
+  // Create session_summaries table for Historical Analysis
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_summaries (
+      session_id TEXT PRIMARY KEY,
+      source_app TEXT NOT NULL,
+      agent_type TEXT NOT NULL,
+      repo_name TEXT,
+      project_name TEXT,
+      script_name TEXT,
+      branch_name TEXT,
+      commit_hash TEXT,
+      start_time INTEGER NOT NULL,
+      end_time INTEGER,
+      duration_ms INTEGER,
+      status TEXT NOT NULL DEFAULT 'ongoing',
+      has_errors INTEGER NOT NULL DEFAULT 0,
+      has_hitl INTEGER NOT NULL DEFAULT 0,
+      event_count INTEGER NOT NULL DEFAULT 0,
+      critical_event_count INTEGER NOT NULL DEFAULT 0,
+      total_cost_usd REAL NOT NULL DEFAULT 0,
+      model_name TEXT,
+      critical_events_summary TEXT,
+      last_updated INTEGER NOT NULL
+    )
+  `);
+
+  // Create indexes for session_summaries
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_source_app ON session_summaries(source_app)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_agent_type ON session_summaries(agent_type)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_repo_name ON session_summaries(repo_name)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_status ON session_summaries(status)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_start_time ON session_summaries(start_time)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_has_errors ON session_summaries(has_errors)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_summaries_has_hitl ON session_summaries(has_hitl)');
+
   // Create FTS5 virtual table for full-text search
   try {
     db.exec(`
@@ -292,12 +327,17 @@ export function insertEvent(event: HookEvent): HookEvent {
     (event as any).git_stats ? JSON.stringify((event as any).git_stats) : null
   );
 
-  return {
+  const savedEvent = {
     ...event,
     id: result.lastInsertRowid as number,
     timestamp,
     humanInTheLoopStatus
   };
+
+  // Update session summary
+  upsertSessionSummary(savedEvent);
+
+  return savedEvent;
 }
 
 export function getFilterOptions(): FilterOptions {
@@ -773,6 +813,276 @@ export function getSessionEvents(sessionId: string): HookEvent[] {
     parent_session_id: row.parent_session_id || undefined,
     git_stats: row.git_stats ? JSON.parse(row.git_stats) : undefined
   }));
+}
+
+// Session Summary Functions for Historical Analysis
+
+import type { SessionSummary, SessionListParams, CriticalEventSummary, SessionStatus } from './types';
+
+// Helper to detect critical events
+function isCriticalEvent(event: HookEvent): { is_critical: boolean; type?: string } {
+  // Error events
+  if (event.hook_event_type === 'Error' || event.hook_event_type.includes('Error')) {
+    return { is_critical: true, type: 'error' };
+  }
+
+  // HITL events
+  if (event.humanInTheLoop) {
+    return { is_critical: true, type: 'hitl' };
+  }
+
+  // High cost events (>$0.10 per event)
+  if (event.cost_usd && event.cost_usd > 0.10) {
+    return { is_critical: true, type: 'high_cost' };
+  }
+
+  // Long tool calls (we'll infer from timing between events in the future)
+  // For now, we don't have duration data per event, so skip this
+
+  return { is_critical: false };
+}
+
+// Extract repo/project metadata from environment
+function extractMetadata(event: HookEvent): {
+  repo_name?: string;
+  project_name?: string;
+  branch_name?: string;
+  commit_hash?: string;
+} {
+  const env = (event as any).environment;
+  const git = (event as any).git;
+
+  if (!env) return {};
+
+  return {
+    repo_name: env.repo_name || env.repository,
+    project_name: env.project_name || env.working_directory?.split('/').pop(),
+    branch_name: git?.branch || env.branch,
+    commit_hash: git?.commit || git?.commit_hash
+  };
+}
+
+// Update or create session summary when an event is inserted
+export function upsertSessionSummary(event: HookEvent): void {
+  const metadata = extractMetadata(event);
+  const critical = isCriticalEvent(event);
+  const timestamp = event.timestamp || Date.now();
+
+  // Check if session summary exists
+  const existingStmt = db.prepare('SELECT * FROM session_summaries WHERE session_id = ?');
+  const existing = existingStmt.get(event.session_id) as any;
+
+  if (existing) {
+    // Update existing summary
+    const criticalSummary: CriticalEventSummary[] = existing.critical_events_summary
+      ? JSON.parse(existing.critical_events_summary)
+      : [];
+
+    // Update critical events summary if this is a critical event
+    if (critical.is_critical && critical.type) {
+      const existingCritical = criticalSummary.find(c => c.type === critical.type);
+      if (existingCritical) {
+        existingCritical.count++;
+      } else {
+        criticalSummary.push({
+          type: critical.type as any,
+          count: 1,
+          first_at: timestamp
+        });
+      }
+    }
+
+    // Determine status
+    let status: SessionStatus = existing.status;
+    if (event.hook_event_type === 'SessionEnd') {
+      status = existing.has_errors || (critical.is_critical && critical.type === 'error') ? 'error' : 'success';
+    } else if (critical.is_critical && critical.type === 'error') {
+      status = 'partial'; // Has errors but not ended yet
+    }
+
+    const updateStmt = db.prepare(`
+      UPDATE session_summaries SET
+        end_time = COALESCE(?, end_time),
+        duration_ms = COALESCE(? - start_time, duration_ms),
+        status = ?,
+        has_errors = ?,
+        has_hitl = ?,
+        event_count = event_count + 1,
+        critical_event_count = ?,
+        total_cost_usd = total_cost_usd + ?,
+        model_name = COALESCE(?, model_name),
+        critical_events_summary = ?,
+        last_updated = ?
+      WHERE session_id = ?
+    `);
+
+    updateStmt.run(
+      event.hook_event_type === 'SessionEnd' ? timestamp : null,
+      event.hook_event_type === 'SessionEnd' ? timestamp : null,
+      status,
+      existing.has_errors || (critical.is_critical && critical.type === 'error') ? 1 : 0,
+      existing.has_hitl || (critical.is_critical && critical.type === 'hitl') ? 1 : 0,
+      existing.critical_event_count + (critical.is_critical ? 1 : 0),
+      event.cost_usd || 0,
+      event.model_name,
+      JSON.stringify(criticalSummary),
+      timestamp,
+      event.session_id
+    );
+  } else {
+    // Create new summary
+    const criticalSummary: CriticalEventSummary[] = [];
+    if (critical.is_critical && critical.type) {
+      criticalSummary.push({
+        type: critical.type as any,
+        count: 1,
+        first_at: timestamp
+      });
+    }
+
+    const insertStmt = db.prepare(`
+      INSERT INTO session_summaries (
+        session_id, source_app, agent_type, repo_name, project_name,
+        script_name, branch_name, commit_hash, start_time, end_time,
+        duration_ms, status, has_errors, has_hitl, event_count,
+        critical_event_count, total_cost_usd, model_name, critical_events_summary, last_updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertStmt.run(
+      event.session_id,
+      event.source_app,
+      event.agent_type || 'claude',
+      metadata.repo_name || null,
+      metadata.project_name || null,
+      null, // script_name - will add in future
+      metadata.branch_name || null,
+      metadata.commit_hash || null,
+      timestamp,
+      event.hook_event_type === 'SessionEnd' ? timestamp : null,
+      event.hook_event_type === 'SessionEnd' ? 0 : null,
+      'ongoing',
+      critical.is_critical && critical.type === 'error' ? 1 : 0,
+      critical.is_critical && critical.type === 'hitl' ? 1 : 0,
+      1,
+      critical.is_critical ? 1 : 0,
+      event.cost_usd || 0,
+      event.model_name || null,
+      JSON.stringify(criticalSummary),
+      timestamp
+    );
+  }
+}
+
+// Get list of sessions with filters
+export function getSessionsList(params: SessionListParams = {}): SessionSummary[] {
+  const {
+    start_time,
+    end_time,
+    source_app,
+    repo_name,
+    status,
+    has_critical_events,
+    limit = 100,
+    offset = 0,
+    sort_by = 'recency'
+  } = params;
+
+  let sql = 'SELECT * FROM session_summaries WHERE 1=1';
+  const sqlParams: any[] = [];
+
+  if (start_time) {
+    sql += ' AND start_time >= ?';
+    sqlParams.push(start_time);
+  }
+
+  if (end_time) {
+    sql += ' AND start_time <= ?';
+    sqlParams.push(end_time);
+  }
+
+  if (source_app) {
+    sql += ' AND source_app = ?';
+    sqlParams.push(source_app);
+  }
+
+  if (repo_name) {
+    sql += ' AND repo_name = ?';
+    sqlParams.push(repo_name);
+  }
+
+  if (status) {
+    sql += ' AND status = ?';
+    sqlParams.push(status);
+  }
+
+  if (has_critical_events !== undefined) {
+    if (has_critical_events) {
+      sql += ' AND critical_event_count > 0';
+    } else {
+      sql += ' AND critical_event_count = 0';
+    }
+  }
+
+  // Add sorting
+  switch (sort_by) {
+    case 'recency':
+      sql += ' ORDER BY start_time DESC';
+      break;
+    case 'severity':
+      sql += ' ORDER BY critical_event_count DESC, has_errors DESC';
+      break;
+    case 'duration':
+      sql += ' ORDER BY duration_ms DESC NULLS LAST';
+      break;
+    case 'cost':
+      sql += ' ORDER BY total_cost_usd DESC';
+      break;
+  }
+
+  sql += ' LIMIT ? OFFSET ?';
+  sqlParams.push(limit, offset);
+
+  const rows = db.prepare(sql).all(...sqlParams) as any[];
+
+  return rows.map(row => ({
+    session_id: row.session_id,
+    source_app: row.source_app,
+    agent_type: row.agent_type,
+    repo_name: row.repo_name || undefined,
+    project_name: row.project_name || undefined,
+    script_name: row.script_name || undefined,
+    branch_name: row.branch_name || undefined,
+    commit_hash: row.commit_hash || undefined,
+    start_time: row.start_time,
+    end_time: row.end_time || undefined,
+    duration_ms: row.duration_ms || undefined,
+    status: row.status as SessionStatus,
+    has_errors: Boolean(row.has_errors),
+    has_hitl: Boolean(row.has_hitl),
+    event_count: row.event_count,
+    critical_event_count: row.critical_event_count,
+    total_cost_usd: row.total_cost_usd,
+    model_name: row.model_name || undefined,
+    critical_events_summary: row.critical_events_summary ? JSON.parse(row.critical_events_summary) : []
+  }));
+}
+
+// Get unique filter options for sessions
+export function getSessionsFilterOptions(): {
+  repos: string[];
+  source_apps: string[];
+  statuses: SessionStatus[];
+} {
+  const repos = db.prepare('SELECT DISTINCT repo_name FROM session_summaries WHERE repo_name IS NOT NULL ORDER BY repo_name').all() as any[];
+  const sourceApps = db.prepare('SELECT DISTINCT source_app FROM session_summaries ORDER BY source_app').all() as any[];
+  const statuses = db.prepare('SELECT DISTINCT status FROM session_summaries ORDER BY status').all() as any[];
+
+  return {
+    repos: repos.map(r => r.repo_name),
+    source_apps: sourceApps.map(s => s.source_app),
+    statuses: statuses.map(s => s.status)
+  };
 }
 
 export { db };

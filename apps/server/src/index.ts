@@ -1,6 +1,6 @@
-import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, searchEvents, getSessionEvents } from './db';
+import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, searchEvents, getSessionEvents, getSessionsList, getSessionsFilterOptions } from './db';
 import type { SearchParams } from './db';
-import type { HookEvent, HumanInTheLoopResponse } from './types';
+import type { HookEvent, HumanInTheLoopResponse, SessionListParams } from './types';
 import { calculateCost, extractTokensFromPayload } from './cost-calculator';
 import { 
   createTheme, 
@@ -243,6 +243,78 @@ const server = Bun.serve({
         start_time: events.length > 0 ? events[0].timestamp : null,
         end_time: events.length > 0 ? events[events.length - 1].timestamp : null,
         events
+      }), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /sessions - Get list of sessions with filters (for Historical Analysis)
+    if (url.pathname === '/sessions' && req.method === 'GET') {
+      const params: SessionListParams = {
+        start_time: url.searchParams.get('start_time') ? parseInt(url.searchParams.get('start_time')!) : undefined,
+        end_time: url.searchParams.get('end_time') ? parseInt(url.searchParams.get('end_time')!) : undefined,
+        source_app: url.searchParams.get('source_app') || undefined,
+        repo_name: url.searchParams.get('repo_name') || undefined,
+        status: url.searchParams.get('status') as any || undefined,
+        has_critical_events: url.searchParams.get('has_critical_events') === 'true' ? true : url.searchParams.get('has_critical_events') === 'false' ? false : undefined,
+        limit: url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : 100,
+        offset: url.searchParams.get('offset') ? parseInt(url.searchParams.get('offset')!) : 0,
+        sort_by: url.searchParams.get('sort_by') as any || 'recency'
+      };
+
+      const sessions = getSessionsList(params);
+
+      return new Response(JSON.stringify({
+        sessions,
+        total_count: sessions.length,
+        params
+      }), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /sessions/filter-options - Get available filter options for sessions
+    if (url.pathname === '/sessions/filter-options' && req.method === 'GET') {
+      const options = getSessionsFilterOptions();
+      return new Response(JSON.stringify(options), {
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // GET /sessions/:sessionId - Get session summary with events (enhanced version)
+    if (url.pathname.startsWith('/sessions/') && !url.pathname.includes('filter-options') && req.method === 'GET') {
+      const sessionId = url.pathname.split('/sessions/')[1];
+
+      if (!sessionId) {
+        return new Response(JSON.stringify({ error: 'Session ID is required' }), {
+          status: 400,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Get events and session summary
+      const events = getSessionEvents(sessionId);
+      const sessions = getSessionsList({ limit: 1, offset: 0 });
+      const sessionSummary = sessions.find(s => s.session_id === sessionId);
+
+      // Identify critical events
+      const criticalEvents = events.filter(event => {
+        return event.hook_event_type === 'Error' ||
+               event.hook_event_type.includes('Error') ||
+               event.humanInTheLoop ||
+               (event.cost_usd && event.cost_usd > 0.10);
+      });
+
+      return new Response(JSON.stringify({
+        session: sessionSummary || {
+          session_id: sessionId,
+          event_count: events.length,
+          start_time: events.length > 0 ? events[0].timestamp : null,
+          end_time: events.length > 0 ? events[events.length - 1].timestamp : null,
+          duration_ms: events.length > 1 ? events[events.length - 1].timestamp - events[0].timestamp : 0
+        },
+        events,
+        critical_events: criticalEvents
       }), {
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
