@@ -307,17 +307,54 @@ Track [OpenAI Codex CLI](https://github.com/openai/openai-codex-cli) executions 
    chmod +x .claude/hooks/codex-tracked
    ```
 
+3. **Global Installation (Recommended for Cross-Repo Tracking)**:
+
+   To track Codex from **any** repository (not just this one):
+
+   ```bash
+   # Install wrapper globally
+   mkdir -p ~/.local/bin/codex-observability
+   cp .claude/hooks/codex-tracked ~/.local/bin/codex-observability/
+   cp .claude/hooks/codex_wrapper.ts ~/.local/bin/codex-observability/
+   cp .claude/hooks/send_event.py ~/.local/bin/codex-observability/
+   cp -r .claude/hooks/utils ~/.local/bin/codex-observability/
+   chmod +x ~/.local/bin/codex-observability/codex-tracked
+
+   # Create convenient symlink
+   ln -sf ~/.local/bin/codex-observability/codex-tracked ~/.local/bin/codex-tracked
+
+   # Add to shell (if not already in PATH)
+   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+   source ~/.zshrc
+   ```
+
+   **Optional: Create alias for automatic tracking**:
+   ```bash
+   # Add to ~/.zshrc
+   echo 'alias codex="codex-tracked"' >> ~/.zshrc
+   source ~/.zshrc
+   ```
+
+   Now every `codex` command from any directory will automatically track to the dashboard!
+
 #### Usage
 
-Replace `codex` commands with `codex-tracked` to enable observability:
-
+**Local (per-repo)**:
 ```bash
-# Standard Codex command
-codex exec -m gpt-5.1-codex-max "Refactor this codebase"
-
-# With observability tracking
+# From this repository
 ./.claude/hooks/codex-tracked exec -m gpt-5.1-codex-max "Refactor this codebase"
 ```
+
+**Global (from any repository)**:
+```bash
+# If you installed globally
+codex-tracked exec -m gpt-5.1-codex-max "Your task"
+
+# Or with alias (automatically tracked)
+codex exec -m gpt-5.1-codex-max "Your task"
+```
+
+The wrapper works from **any directory** if installed globally!
 
 **What gets tracked:**
 - ✅ **TaskStart** - Codex session begins (▶️)
