@@ -425,7 +425,71 @@ const server = Bun.serve({
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }
-    
+
+    // GET /health - Health check endpoint
+    if (url.pathname === '/health' && req.method === 'GET') {
+      try {
+        const { getDatabase } = await import('./db');
+        const db = getDatabase();
+
+        // Get database size
+        const dbSize = db.prepare(`
+          SELECT page_count * page_size as size
+          FROM pragma_page_count(), pragma_page_size()
+        `).get() as { size: number } | undefined;
+
+        // Get total event count
+        const eventCount = db.prepare(`
+          SELECT COUNT(*) as count FROM events
+        `).get() as { count: number } | undefined;
+
+        // Get active sessions in last 24 hours
+        const sessionCount = db.prepare(`
+          SELECT COUNT(DISTINCT session_id) as count
+          FROM events
+          WHERE timestamp > ?
+        `).get(Date.now() - 24 * 60 * 60 * 1000) as { count: number } | undefined;
+
+        // Get events in last minute
+        const recentEvents = db.prepare(`
+          SELECT COUNT(*) as count
+          FROM events
+          WHERE timestamp > ?
+        `).get(Date.now() - 60 * 1000) as { count: number } | undefined;
+
+        return new Response(JSON.stringify({
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          server: {
+            uptime_ms: Math.floor(process.uptime() * 1000),
+            version: '1.0.0',
+            port: server.port
+          },
+          database: {
+            size_bytes: dbSize?.size || 0,
+            size_mb: ((dbSize?.size || 0) / 1024 / 1024).toFixed(2),
+            total_events: eventCount?.count || 0,
+            active_sessions_24h: sessionCount?.count || 0,
+            events_last_minute: recentEvents?.count || 0
+          },
+          websocket: {
+            connected_clients: wsClients.size
+          }
+        }), {
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Health check error:', error);
+        return new Response(JSON.stringify({
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }), {
+          status: 500,
+          headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // WebSocket upgrade
     if (url.pathname === '/stream') {
       const success = server.upgrade(req);

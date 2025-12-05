@@ -300,12 +300,56 @@ Bun-powered TypeScript server with real-time capabilities:
   - `POST /events` - Receive events from agents
   - `GET /events/recent` - Paginated event retrieval with filtering
   - `GET /events/filter-options` - Available filter values
+  - `GET /health` - Health check with server status, database metrics, and WebSocket client count
   - `WS /stream` - Real-time event broadcasting
 - **Features**:
   - Automatic schema migrations
   - Event validation
   - WebSocket broadcast to all clients
   - Chat transcript storage
+  - System health monitoring
+
+#### Health Check Endpoint
+
+The `/health` endpoint provides comprehensive system status:
+
+```bash
+# Check server health
+curl http://localhost:4000/health | jq
+
+# Monitor in watch mode
+watch -n 5 'curl -s http://localhost:4000/health | jq'
+
+# Use in scripts
+if curl -sf http://localhost:4000/health > /dev/null; then
+  echo "Server is healthy"
+else
+  echo "Server is down!"
+fi
+```
+
+Response example:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-12-05T12:29:25.527Z",
+  "server": {
+    "uptime_ms": 13866,
+    "version": "1.0.0",
+    "port": 4000
+  },
+  "database": {
+    "size_bytes": 777912320,
+    "size_mb": "741.88",
+    "total_events": 9292,
+    "active_sessions_24h": 49,
+    "events_last_minute": 73
+  },
+  "websocket": {
+    "connected_clients": 3
+  }
+}
+```
 
 ### 3. Client (`apps/client/`)
 

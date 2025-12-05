@@ -14,7 +14,7 @@
  *   (Just replace 'codex' with 'codex-tracked')
  */
 
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import * as os from 'os';
@@ -23,6 +23,14 @@ import * as os from 'os';
 const SEND_EVENT_SCRIPT = path.join(__dirname, 'send_event.py');
 const SERVER_URL = process.env.CODEX_OBSERVABILITY_SERVER || 'http://localhost:4000/events';
 const CODEX_VERSION = '0.64.0'; // Could be dynamically retrieved
+
+interface GitStats {
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+  before_summary: string;
+  after_summary: string;
+}
 
 interface EventPayload {
   command: string[];
@@ -34,6 +42,7 @@ interface EventPayload {
   duration_ms?: number;
   error_message?: string;
   parent_session_id?: string;
+  git_stats?: GitStats;
 }
 
 /**
@@ -93,6 +102,63 @@ function extractModel(args: string[]): string | undefined {
 }
 
 /**
+ * Capture git status summary
+ */
+function captureGitStatus(): string {
+  try {
+    const status = execSync('git status --short', { encoding: 'utf8' });
+    return status.trim() || 'clean';
+  } catch (err) {
+    return 'not-a-git-repo';
+  }
+}
+
+/**
+ * Compute git stats by comparing before/after status
+ */
+function computeGitStats(beforeStatus: string, afterStatus: string): GitStats {
+  // If not a git repo, return zeros
+  if (beforeStatus === 'not-a-git-repo' || afterStatus === 'not-a-git-repo') {
+    return {
+      files_changed: 0,
+      insertions: 0,
+      deletions: 0,
+      before_summary: beforeStatus,
+      after_summary: afterStatus
+    };
+  }
+
+  // Count changed files from git status --short output
+  const beforeLines = beforeStatus === 'clean' ? [] : beforeStatus.split('\n');
+  const afterLines = afterStatus === 'clean' ? [] : afterStatus.split('\n');
+  const filesChanged = new Set([...beforeLines, ...afterLines]).size;
+
+  // Try to get detailed stats from git diff
+  let insertions = 0;
+  let deletions = 0;
+  try {
+    const diffStat = execSync('git diff --stat HEAD', { encoding: 'utf8' });
+    const match = diffStat.match(/(\d+) insertions?.*?(\d+) deletions?/);
+    if (match) {
+      insertions = parseInt(match[1], 10) || 0;
+      deletions = parseInt(match[2], 10) || 0;
+    }
+  } catch (err) {
+    // If diff fails, estimate based on file count
+    insertions = filesChanged * 10; // rough estimate
+    deletions = filesChanged * 5;
+  }
+
+  return {
+    files_changed: filesChanged,
+    insertions,
+    deletions,
+    before_summary: beforeStatus,
+    after_summary: afterStatus
+  };
+}
+
+/**
  * Main wrapper function
  */
 async function main() {
@@ -126,6 +192,9 @@ async function main() {
 
   await sendEvent(sessionId, 'TaskStart', startPayload);
 
+  // Capture git status BEFORE Codex execution
+  const gitStatusBefore = captureGitStatus();
+
   // Execute actual Codex command
   const startTimestamp = Date.now();
 
@@ -151,6 +220,10 @@ async function main() {
   const durationMs = endTimestamp - startTimestamp;
   const endTime = new Date().toISOString();
 
+  // Capture git status AFTER Codex execution and compute stats
+  const gitStatusAfter = captureGitStatus();
+  const gitStats = computeGitStats(gitStatusBefore, gitStatusAfter);
+
   // Emit TaskComplete or TaskError based on exit code
   if (exitCode === 0) {
     const completePayload: EventPayload = {
@@ -161,11 +234,13 @@ async function main() {
       end_time: endTime,
       exit_code: exitCode,
       duration_ms: durationMs,
-      parent_session_id: parentSessionId
+      parent_session_id: parentSessionId,
+      git_stats: gitStats
     };
 
     await sendEvent(sessionId, 'TaskComplete', completePayload);
     console.log(`[codex-tracked] Task completed successfully (${durationMs}ms)`);
+    console.log(`[codex-tracked] Git stats: ${gitStats.files_changed} files, +${gitStats.insertions}/-${gitStats.deletions}`);
   } else {
     const errorPayload: EventPayload = {
       command: fullCommand,
@@ -176,7 +251,8 @@ async function main() {
       exit_code: exitCode,
       duration_ms: durationMs,
       error_message: `Codex exited with code ${exitCode}`,
-      parent_session_id: parentSessionId
+      parent_session_id: parentSessionId,
+      git_stats: gitStats
     };
 
     await sendEvent(sessionId, 'TaskError', errorPayload);

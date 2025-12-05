@@ -189,7 +189,10 @@ const totalEventCount = computed(() => {
 
 const toolCallCount = computed(() => {
   return dataPoints.value.reduce((sum, dp) => {
-    return sum + (dp.eventTypes?.['PreToolUse'] || 0);
+    // Count BOTH Claude PreToolUse AND Codex TaskStart as "tools"
+    const claudeTools = dp.eventTypes?.['PreToolUse'] || 0;
+    const codexTasks = dp.eventTypes?.['TaskStart'] || 0;
+    return sum + claudeTools + codexTasks;
   }, 0);
 });
 

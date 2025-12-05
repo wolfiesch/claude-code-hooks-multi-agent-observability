@@ -127,6 +127,12 @@ export function initDatabase(): void {
     if (!hasParentSessionIdColumn) {
       db.exec('ALTER TABLE events ADD COLUMN parent_session_id TEXT');
     }
+
+    // Check if git_stats column exists, add it if not (for Codex git metadata)
+    const hasGitStatsColumn = columns.some((col: any) => col.name === 'git_stats');
+    if (!hasGitStatsColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN git_stats TEXT');
+    }
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
@@ -196,10 +202,14 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_theme_ratings_theme ON theme_ratings(themeId)');
 }
 
+export function getDatabase(): Database {
+  return db;
+}
+
 export function insertEvent(event: HookEvent): HookEvent {
   const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const timestamp = event.timestamp || Date.now();
@@ -232,7 +242,8 @@ export function insertEvent(event: HookEvent): HookEvent {
     (event as any).workflow ? JSON.stringify((event as any).workflow) : null,
     event.agent_type || 'claude',
     event.agent_version || null,
-    event.parent_session_id || null
+    event.parent_session_id || null,
+    (event as any).git_stats ? JSON.stringify((event as any).git_stats) : null
   );
 
   return {
