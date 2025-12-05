@@ -25,7 +25,12 @@ model = os.environ.get('CLAUDE_MODEL', 'unknown')  # ❌ Claude Code doesn't set
 - `.claude/hooks/shared/metadata_collector.py:180-189`
 - `apps/client/src/components/SessionInfoCard.vue:18` (displays the unknown value)
 
-**Status**: 🔴 Not Fixed
+**Status**: ✅ **FIXED** (commit: 9146e01)
+
+**Solution implemented**:
+- Modified `metadata_collector.py` to accept optional `model_name` parameter
+- Updated `send_event.py` to pass already-extracted model_name to metadata collector
+- Model name is now correctly extracted from transcript and displayed
 
 ---
 
@@ -41,16 +46,20 @@ model = os.environ.get('CLAUDE_MODEL', 'unknown')  # ❌ Claude Code doesn't set
 
 **Observed in**: Both 1m and 3m time ranges when multiple agents are active
 
-**Fix needed**:
-- Implement timeline clustering/grouping for dense periods
-- Add zoom functionality
-- Consider showing aggregated counts instead of individual icons when density is high
+**Fix implemented**:
+1. **chartRenderer.ts**: Added horizontal space check before drawing labels
+   - Only draws label if `bgWidth <= availableWidth` (totalBarWidth × 1.5)
+   - Prevents labels from overlapping with adjacent bars
+2. **useEventEmojis.ts**: Made label formatting adaptive
+   - Shows only 2 items when >10 total events (instead of always 3)
+   - Adds "+N" indicator when event types are omitted
+   - Keeps labels more compact in high-density situations
 
 **Files affected**:
-- `apps/client/src/components/LivePulseChart.vue`
 - `apps/client/src/utils/chartRenderer.ts`
+- `apps/client/src/composables/useEventEmojis.ts`
 
-**Status**: 🔴 Not Fixed
+**Status**: ✅ **FIXED** (commit: c2e3937)
 
 ---
 
