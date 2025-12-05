@@ -64,14 +64,19 @@
     </header>
     
     <!-- Metadata Panels (Session Info + Environment + Todo Progress + Cost) -->
-    <div v-if="events.length > 0" class="px-3 py-3 mobile:px-2 mobile:py-2 bg-[var(--theme-bg-secondary)] border-b border-[var(--theme-border-primary)]">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
-        <SessionInfoCard :events="events" />
-        <EnvironmentInfoPanel :envInfo="latestEnvironment" />
-        <TodoProgressWidget :todoTracking="latestTodoTracking" />
-        <SessionCostTracker :events="events" :sessionDuration="sessionDuration" />
+    <ErrorBoundary
+      fallback-title="Metadata Panel Error"
+      fallback-message="Unable to display session metadata. The dashboard will continue to function."
+    >
+      <div v-if="events.length > 0" class="px-3 py-3 mobile:px-2 mobile:py-2 bg-[var(--theme-bg-secondary)] border-b border-[var(--theme-border-primary)]">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
+          <SessionInfoCard :events="events" />
+          <EnvironmentInfoPanel :envInfo="latestEnvironment" />
+          <TodoProgressWidget :todoTracking="latestTodoTracking" />
+          <SessionCostTracker :events="events" :sessionDuration="sessionDuration" />
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
 
     <!-- Filters -->
     <FilterPanel
@@ -82,35 +87,50 @@
     />
     
     <!-- Live Pulse Chart -->
-    <LivePulseChart
-      :events="events"
-      :filters="filters"
-      @update-unique-apps="uniqueAppNames = $event"
-      @update-all-apps="allAppNames = $event"
-      @update-time-range="currentTimeRange = $event"
-    />
-
-    <!-- Agent Swim Lane Container (below pulse chart, full width, hidden when empty) -->
-    <div v-if="selectedAgentLanes.length > 0" class="w-full bg-[var(--theme-bg-secondary)] px-3 py-4 mobile:px-2 mobile:py-2 overflow-hidden">
-      <AgentSwimLaneContainer
-        :selected-agents="selectedAgentLanes"
-        :events="events"
-        :time-range="currentTimeRange"
-        @update:selected-agents="selectedAgentLanes = $event"
-      />
-    </div>
-    
-    <!-- Timeline -->
-    <div class="flex flex-col flex-1 overflow-hidden">
-      <EventTimeline
+    <ErrorBoundary
+      fallback-title="Chart Error"
+      fallback-message="Unable to display the activity chart. Event timeline is still available below."
+    >
+      <LivePulseChart
         :events="events"
         :filters="filters"
-        :unique-app-names="uniqueAppNames"
-        :all-app-names="allAppNames"
-        v-model:stick-to-bottom="stickToBottom"
-        @select-agent="toggleAgentLane"
+        @update-unique-apps="uniqueAppNames = $event"
+        @update-all-apps="allAppNames = $event"
+        @update-time-range="currentTimeRange = $event"
       />
-    </div>
+    </ErrorBoundary>
+
+    <!-- Agent Swim Lane Container (below pulse chart, full width, hidden when empty) -->
+    <ErrorBoundary
+      fallback-title="Swim Lane Error"
+      fallback-message="Unable to display agent swim lanes. The event timeline below is still functional."
+    >
+      <div v-if="selectedAgentLanes.length > 0" class="w-full bg-[var(--theme-bg-secondary)] px-3 py-4 mobile:px-2 mobile:py-2 overflow-hidden">
+        <AgentSwimLaneContainer
+          :selected-agents="selectedAgentLanes"
+          :events="events"
+          :time-range="currentTimeRange"
+          @update:selected-agents="selectedAgentLanes = $event"
+        />
+      </div>
+    </ErrorBoundary>
+
+    <!-- Timeline -->
+    <ErrorBoundary
+      fallback-title="Timeline Error"
+      fallback-message="Unable to display the event timeline. Try refreshing the page or clearing events."
+    >
+      <div class="flex flex-col flex-1 overflow-hidden">
+        <EventTimeline
+          :events="events"
+          :filters="filters"
+          :unique-app-names="uniqueAppNames"
+          :all-app-names="allAppNames"
+          v-model:stick-to-bottom="stickToBottom"
+          @select-agent="toggleAgentLane"
+        />
+      </div>
+    </ErrorBoundary>
     
     <!-- Stick to bottom button -->
     <StickScrollButton
@@ -162,6 +182,7 @@ import SessionInfoCard from './components/SessionInfoCard.vue';
 import EnvironmentInfoPanel from './components/EnvironmentInfoPanel.vue';
 import TodoProgressWidget from './components/TodoProgressWidget.vue';
 import SessionCostTracker from './components/SessionCostTracker.vue';
+import ErrorBoundary from './components/ErrorBoundary.vue';
 import { WS_URL } from './config';
 
 // WebSocket connection
