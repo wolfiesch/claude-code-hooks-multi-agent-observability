@@ -97,8 +97,9 @@ type ToolMetadata struct {
 
 // SessionState tracks persistent session state
 type SessionState struct {
-	StartTime string `json:"startTime"`
-	ToolCount int    `json:"toolCount"`
+	StartTime string        `json:"startTime"`
+	ToolCount int           `json:"toolCount"`
+	Stats     *SessionStats `json:"stats,omitempty"`
 }
 
 func main() {
@@ -603,14 +604,124 @@ func saveState(allState map[string]SessionState) {
 }
 
 func getSessionStats(sessionID string) SessionStats {
-	// Placeholder - full stats tracking would require more complex state management
-	// For now, return empty stats
-	return SessionStats{}
+	stateFile := getStateFile()
+
+	var allState map[string]SessionState
+	data, err := os.ReadFile(stateFile)
+	if err == nil {
+		json.Unmarshal(data, &allState)
+	}
+
+	if allState == nil {
+		allState = make(map[string]SessionState)
+	}
+
+	sessionKey := "session_" + sessionID
+	state, exists := allState[sessionKey]
+	if !exists || state.Stats == nil {
+		// Return zero stats
+		return SessionStats{
+			ToolsExecuted:    0,
+			FilesRead:        0,
+			FilesWritten:     0,
+			FilesEdited:      0,
+			BashCommandsRun:  0,
+			TestsRun:         0,
+			TotalToolTimeMs:  0,
+			AvgToolTimeMs:    0,
+			ErrorCount:       0,
+			GrepSearches:     0,
+			GlobSearches:     0,
+			SubagentsLaunched: 0,
+			WebSearches:      0,
+			WebFetches:       0,
+		}
+	}
+
+	// Calculate average
+	avgToolTime := 0.0
+	if state.Stats.ToolsExecuted > 0 {
+		avgToolTime = state.Stats.TotalToolTimeMs / float64(state.Stats.ToolsExecuted)
+	}
+
+	stats := *state.Stats
+	stats.AvgToolTimeMs = avgToolTime
+	return stats
 }
 
 func updateSessionStats(sessionID, toolName string, durationMs float64, payload map[string]interface{}) {
-	// Placeholder for session stats update
-	// Would track cumulative stats in state file
+	stateFile := getStateFile()
+
+	var allState map[string]SessionState
+	data, err := os.ReadFile(stateFile)
+	if err == nil {
+		json.Unmarshal(data, &allState)
+	}
+
+	if allState == nil {
+		allState = make(map[string]SessionState)
+	}
+
+	sessionKey := "session_" + sessionID
+	state := allState[sessionKey]
+
+	// Initialize stats if needed
+	if state.Stats == nil {
+		state.Stats = &SessionStats{
+			ToolsExecuted:     0,
+			FilesRead:         0,
+			FilesWritten:      0,
+			FilesEdited:       0,
+			BashCommandsRun:   0,
+			TestsRun:          0,
+			TotalToolTimeMs:   0,
+			ErrorCount:        0,
+			GrepSearches:      0,
+			GlobSearches:      0,
+			SubagentsLaunched: 0,
+			WebSearches:       0,
+			WebFetches:        0,
+		}
+	}
+
+	// Update cumulative stats
+	state.Stats.ToolsExecuted++
+	state.Stats.TotalToolTimeMs += durationMs
+
+	// Tool-specific counters
+	switch toolName {
+	case "Read":
+		state.Stats.FilesRead++
+	case "Write":
+		state.Stats.FilesWritten++
+	case "Edit", "MultiEdit":
+		state.Stats.FilesEdited++
+	case "Bash":
+		state.Stats.BashCommandsRun++
+		// Detect test commands
+		if command, ok := payload["tool_input"].(map[string]interface{})["command"].(string); ok {
+			lowerCmd := strings.ToLower(command)
+			if strings.Contains(lowerCmd, "pytest") ||
+			   strings.Contains(lowerCmd, "jest") ||
+			   strings.Contains(lowerCmd, "test") ||
+			   strings.Contains(lowerCmd, "go test") {
+				state.Stats.TestsRun++
+			}
+		}
+	case "Grep":
+		state.Stats.GrepSearches++
+	case "Glob":
+		state.Stats.GlobSearches++
+	case "Task":
+		state.Stats.SubagentsLaunched++
+	case "WebSearch":
+		state.Stats.WebSearches++
+	case "WebFetch":
+		state.Stats.WebFetches++
+	}
+
+	allState[sessionKey] = state
+	saveState(allState)
 }
 
 func fallbackToPython(payload map[string]interface{}, sourceApp, eventType, serverURL, agentType, agentVersion string, addChat bool) {
