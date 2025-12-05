@@ -25,7 +25,7 @@ export function useWebSocket(url: string) {
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          
+
           if (message.type === 'initial') {
             const initialEvents = Array.isArray(message.data) ? message.data : [];
             // Only keep the most recent events up to maxEvents
@@ -33,11 +33,11 @@ export function useWebSocket(url: string) {
           } else if (message.type === 'event') {
             const newEvent = message.data as HookEvent;
             events.value.push(newEvent);
-            
+
             // Limit events array to maxEvents, removing the oldest when exceeded
             if (events.value.length > maxEvents) {
-              // Remove the oldest events (first 10) when limit is exceeded
-              events.value = events.value.slice(events.value.length - maxEvents + 10);
+              // Keep exactly maxEvents by removing oldest events
+              events.value = events.value.slice(-maxEvents);
             }
           }
         } catch (err) {

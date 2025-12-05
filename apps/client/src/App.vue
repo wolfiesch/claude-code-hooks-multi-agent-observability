@@ -63,6 +63,16 @@
       </div>
     </header>
     
+    <!-- Metadata Panels (Session Info + Environment + Todo Progress + Cost) -->
+    <div v-if="events.length > 0" class="px-3 py-3 mobile:px-2 mobile:py-2 bg-[var(--theme-bg-secondary)] border-b border-[var(--theme-border-primary)]">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
+        <SessionInfoCard :events="events" />
+        <EnvironmentInfoPanel :envInfo="latestEnvironment" />
+        <TodoProgressWidget :todoTracking="latestTodoTracking" />
+        <SessionCostTracker :events="events" :sessionDuration="sessionDuration" />
+      </div>
+    </div>
+
     <!-- Filters -->
     <FilterPanel
       v-if="showFilters"
@@ -136,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import type { TimeRange } from './types';
 import { useWebSocket } from './composables/useWebSocket';
 import { useThemes } from './composables/useThemes';
@@ -148,6 +158,10 @@ import LivePulseChart from './components/LivePulseChart.vue';
 import ThemeManager from './components/ThemeManager.vue';
 import ToastNotification from './components/ToastNotification.vue';
 import AgentSwimLaneContainer from './components/AgentSwimLaneContainer.vue';
+import SessionInfoCard from './components/SessionInfoCard.vue';
+import EnvironmentInfoPanel from './components/EnvironmentInfoPanel.vue';
+import TodoProgressWidget from './components/TodoProgressWidget.vue';
+import SessionCostTracker from './components/SessionCostTracker.vue';
 import { WS_URL } from './config';
 
 // WebSocket connection
@@ -183,14 +197,51 @@ interface Toast {
 }
 const toasts = ref<Toast[]>([]);
 let toastIdCounter = 0;
-const seenAgents = new Set<string>();
+const MAX_TOASTS = 3; // Limit simultaneous toasts
+
+// Track seen agents with timestamps for cleanup
+const seenAgents = new Map<string, number>();
+const AGENT_CLEANUP_INTERVAL = 3600000; // 1 hour in ms
+
+// Get latest environment info from most recent event
+const latestEnvironment = computed(() => {
+  if (events.value.length === 0) return null;
+  const latestEvent = events.value[events.value.length - 1];
+  return latestEvent.environment || null;
+});
+
+// Get latest todo tracking info from most recent event
+const latestTodoTracking = computed(() => {
+  if (events.value.length === 0) return null;
+  const latestEvent = events.value[events.value.length - 1];
+  return latestEvent.workflow?.todoTracking || null;
+});
+
+// Calculate session duration from session metadata
+const sessionDuration = computed(() => {
+  if (events.value.length === 0) return 0;
+  const latestEvent = events.value[events.value.length - 1];
+  return latestEvent.session?.sessionDuration || 0;
+});
 
 // Watch for new agents and show toast
 watch(uniqueAppNames, (newAppNames) => {
-  // Find agents that are new (not in seenAgents set)
+  const now = Date.now();
+
+  // Find agents that are new (not in seenAgents map)
   newAppNames.forEach(appName => {
     if (!seenAgents.has(appName)) {
-      seenAgents.add(appName);
+      seenAgents.set(appName, now);
+
+      // Limit max simultaneous toasts
+      if (toasts.value.length >= MAX_TOASTS) {
+        // Remove oldest toast
+        const oldestToast = toasts.value.shift();
+        if (oldestToast) {
+          // Toast will be auto-dismissed by component, just remove from array
+        }
+      }
+
       // Show toast for new agent
       const toast: Toast = {
         id: toastIdCounter++,
@@ -198,8 +249,19 @@ watch(uniqueAppNames, (newAppNames) => {
         agentColor: getHexColorForApp(appName)
       };
       toasts.value.push(toast);
+    } else {
+      // Update timestamp for active agent
+      seenAgents.set(appName, now);
     }
   });
+
+  // Cleanup stale agents (not seen in last hour)
+  const cutoffTime = now - AGENT_CLEANUP_INTERVAL;
+  for (const [agentName, timestamp] of seenAgents.entries()) {
+    if (timestamp < cutoffTime && !newAppNames.includes(agentName)) {
+      seenAgents.delete(agentName);
+    }
+  }
 }, { deep: true });
 
 const dismissToast = (id: number) => {
@@ -225,6 +287,8 @@ const toggleAgentLane = (agentName: string) => {
 const handleClearClick = () => {
   clearEvents();
   selectedAgentLanes.value = [];
+  toasts.value = [];
+  seenAgents.clear();
 };
 
 // Debug handler for theme manager
@@ -232,4 +296,25 @@ const handleThemeManagerClick = () => {
   console.log('Theme manager button clicked!');
   showThemeManager.value = true;
 };
+
+// Cleanup stale selected agent lanes periodically
+let cleanupInterval: number | null = null;
+
+const cleanupStaleAgentLanes = () => {
+  // Remove agents from selectedAgentLanes if they're not in current uniqueAppNames
+  selectedAgentLanes.value = selectedAgentLanes.value.filter(agentName =>
+    uniqueAppNames.value.includes(agentName)
+  );
+};
+
+onMounted(() => {
+  // Run cleanup every 30 seconds
+  cleanupInterval = window.setInterval(cleanupStaleAgentLanes, 30000);
+});
+
+onUnmounted(() => {
+  if (cleanupInterval !== null) {
+    clearInterval(cleanupInterval);
+  }
+});
 </script>
