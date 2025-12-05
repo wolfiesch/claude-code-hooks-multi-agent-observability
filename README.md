@@ -320,6 +320,8 @@ The hook system intercepts Claude Code lifecycle events:
   - `session_start.py`: Logs session start, can load development context
   - `session_end.py`: Logs session end, saves session statistics
 
+> **⚡ Performance Tip**: For 17x faster hooks (6ms vs 101ms), see the optional [compiled Go hooks](./.claude/hooks/claude-hook/). Recommended for production use with high tool frequency.
+
 ### 2. Server (`apps/server/`)
 
 Bun-powered TypeScript server with real-time capabilities:
