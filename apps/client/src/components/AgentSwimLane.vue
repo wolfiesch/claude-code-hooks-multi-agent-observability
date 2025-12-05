@@ -1,5 +1,11 @@
 <template>
-  <div class="agent-swim-lane">
+  <div
+    class="agent-swim-lane"
+    :style="{
+      borderLeft: `6px solid ${getHexColorForApp(appName)}`,
+      boxShadow: `0 0 0 1px ${getHexColorForApp(appName)}40, 0 4px 6px -1px rgba(0, 0, 0, 0.1)`
+    }"
+  >
     <div class="lane-header">
       <div class="header-left">
         <div class="agent-label-container">
@@ -515,10 +521,14 @@ onUnmounted(() => {
 <style scoped>
 .agent-swim-lane {
   width: 100%;
-  background: transparent;
+  background: var(--theme-bg-secondary);
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 8px;
+  padding-left: 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .lane-header {

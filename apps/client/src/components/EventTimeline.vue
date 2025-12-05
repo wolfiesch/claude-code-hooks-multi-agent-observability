@@ -13,18 +13,22 @@
           :key="agentId"
           @click="emit('selectAgent', agentId)"
           :class="[
-            'text-base mobile:text-sm font-bold px-3 mobile:px-2 py-1 rounded-full border-2 shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-105 cursor-pointer',
+            'text-base mobile:text-sm font-bold px-3 mobile:px-2 py-1 rounded-full transition-all duration-200 hover:shadow-xl hover:scale-105 cursor-pointer',
+            isAgentSelected(agentId)
+              ? 'border-4 shadow-2xl ring-2 ring-offset-2'
+              : 'border-2 shadow-lg',
             isAgentActive(agentId)
               ? 'text-[var(--theme-text-primary)] bg-[var(--theme-bg-tertiary)]'
               : 'text-[var(--theme-text-tertiary)] bg-[var(--theme-bg-tertiary)] opacity-50 hover:opacity-75'
           ]"
           :style="{
             borderColor: getHexColorForApp(getAppNameFromAgentId(agentId)),
-            backgroundColor: getHexColorForApp(getAppNameFromAgentId(agentId)) + (isAgentActive(agentId) ? '33' : '1a')
+            backgroundColor: getHexColorForApp(getAppNameFromAgentId(agentId)) + (isAgentActive(agentId) ? '33' : '1a'),
+            ringColor: isAgentSelected(agentId) ? getHexColorForApp(getAppNameFromAgentId(agentId)) + '80' : 'transparent'
           }"
-          :title="`${isAgentActive(agentId) ? 'Active: Click to add' : 'Sleeping: No recent events. Click to add'} ${agentId} to comparison lanes`"
+          :title="`${isAgentSelected(agentId) ? '✓ SELECTED: Click to remove from' : isAgentActive(agentId) ? 'Active: Click to add to' : 'Sleeping: Click to add to'} comparison lanes`"
         >
-          <span class="mr-2">{{ isAgentActive(agentId) ? '✨' : '😴' }}</span>
+          <span class="mr-2">{{ isAgentSelected(agentId) ? '✓' : (isAgentActive(agentId) ? '✨' : '😴') }}</span>
           <span class="font-mono text-sm">{{ agentId }}</span>
         </button>
       </div>
@@ -112,6 +116,7 @@ const props = defineProps<{
   stickToBottom: boolean;
   uniqueAppNames?: string[]; // Agent IDs (app:session) active in current time window
   allAppNames?: string[]; // All agent IDs (app:session) ever seen in session
+  selectedAgents?: string[]; // Agent IDs that have swim lanes showing
 }>();
 
 const emit = defineEmits<{
@@ -138,6 +143,11 @@ const resolveAgentType = (event: HookEvent) => event.agent_type || event.source_
 // Check if an agent is currently active (has events in the current time window)
 const isAgentActive = (agentId: string): boolean => {
   return (props.uniqueAppNames || []).includes(agentId);
+};
+
+// Check if an agent is selected (has a swim lane showing)
+const isAgentSelected = (agentId: string): boolean => {
+  return (props.selectedAgents || []).includes(agentId);
 };
 
 const filteredEvents = computed(() => {

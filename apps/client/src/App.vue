@@ -137,12 +137,16 @@
       />
     </ErrorBoundary>
 
-    <!-- Agent Swim Lane Container (below pulse chart, full width, hidden when empty) -->
+    <!-- Agent Swim Lane Container (below pulse chart, full width, scrollable with max-height) -->
     <ErrorBoundary
       fallback-title="Swim Lane Error"
       fallback-message="Unable to display agent swim lanes. The event timeline below is still functional."
     >
-      <div v-if="selectedAgentLanes.length > 0" class="w-full bg-[var(--theme-bg-secondary)] px-3 py-4 mobile:px-2 mobile:py-2 overflow-hidden">
+      <div
+        v-if="selectedAgentLanes.length > 0"
+        class="w-full bg-[var(--theme-bg-secondary)] px-3 py-4 mobile:px-2 mobile:py-2 overflow-y-auto border-b border-[var(--theme-border-primary)]"
+        style="max-height: 50vh;"
+      >
         <AgentSwimLaneContainer
           :selected-agents="selectedAgentLanes"
           :events="events"
@@ -163,6 +167,7 @@
           :filters="filters"
           :unique-app-names="uniqueAppNames"
           :all-app-names="allAppNames"
+          :selected-agents="selectedAgentLanes"
           v-model:stick-to-bottom="stickToBottom"
           @select-agent="toggleAgentLane"
         />
