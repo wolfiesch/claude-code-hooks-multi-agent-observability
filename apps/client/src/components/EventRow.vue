@@ -168,6 +168,9 @@
           <span v-if="event.model_name" class="text-xs text-[var(--theme-text-secondary)] px-1.5 py-0.5 rounded-full border bg-[var(--theme-bg-tertiary)]/50 shadow-sm" :title="`Model: ${event.model_name}`">
             <span class="mr-0.5">🧠</span>{{ formatModelName(event.model_name) }}
           </span>
+          <span v-if="event.agent_type && event.agent_type !== 'claude'" class="text-xs font-semibold text-purple-900 dark:text-purple-100 px-1.5 py-0.5 rounded-full border-2 border-purple-500 bg-purple-100 dark:bg-purple-900/30 shadow-sm" :title="`Agent: ${event.agent_type}${event.agent_version ? ' v' + event.agent_version : ''}`">
+            <span class="mr-0.5">🤖</span>{{ event.agent_type }}
+          </span>
           <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-[var(--theme-primary)] text-white shadow-md">
             <span class="mr-1 text-sm">{{ hookEmoji }}</span>
             {{ event.hook_event_type }}
@@ -189,6 +192,9 @@
           </span>
           <span v-if="event.model_name" class="text-sm text-[var(--theme-text-secondary)] px-2 py-0.5 rounded-full border bg-[var(--theme-bg-tertiary)]/50 shadow-md" :title="`Model: ${event.model_name}`">
             <span class="mr-1">🧠</span>{{ formatModelName(event.model_name) }}
+          </span>
+          <span v-if="event.agent_type && event.agent_type !== 'claude'" class="text-sm font-semibold text-purple-900 dark:text-purple-100 px-2 py-0.5 rounded-full border-2 border-purple-500 bg-purple-100 dark:bg-purple-900/30 shadow-md" :title="`Agent: ${event.agent_type}${event.agent_version ? ' v' + event.agent_version : ''}`">
+            <span class="mr-1">🤖</span>{{ event.agent_type }}
           </span>
           <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-bold bg-[var(--theme-primary)] text-white shadow-lg">
             <span class="mr-1.5 text-base">{{ hookEmoji }}</span>

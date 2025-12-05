@@ -8,6 +8,10 @@ const eventTypeToEmoji: Record<string, string> = {
   'UserPromptSubmit': '💬',
   'SessionStart': '🚀',
   'SessionEnd': '🏁',
+  // Codex CLI event types
+  'TaskStart': '▶️',
+  'TaskComplete': '✅',
+  'TaskError': '❌',
   // Default
   'default': '❓'
 };

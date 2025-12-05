@@ -718,3 +718,63 @@ _To be completed after Phase 6_
 
 ### Recommendations for Future Agent Integrations
 -
+
+### 2024-12-04 5:50 PM - Phase 4 Implementation Complete (Frontend UI)
+
+#### ✅ Completed Tasks
+
+**4A: Filter Panel Updates (FilterPanel.vue)**
+- ✅ 4A.1: Added agent_type to filter state interface
+- ✅ 4A.2: Added agent type dropdown UI with "All Agents" option
+- ✅ 4A.3: Wired up agentType filter to parent component (App.vue)
+- ✅ 4A.4: Tested - TypeScript compilation passes
+
+**4B: Event Display Updates**
+- ✅ 4B.1: Added agent type badge to EventRow.vue (both mobile & desktop layouts)
+  - Shows 🤖 emoji + agent type for non-Claude agents
+  - Purple badge styling with tooltip showing version
+  - Conditionally rendered (hidden for 'claude' agents to reduce clutter)
+- ✅ 4B.3: Updated useEventEmojis.ts for Codex events:
+  - TaskStart: ▶️
+  - TaskComplete: ✅
+  - TaskError: ❌
+- ❌ 4B.2: Skipped agent-specific border colors (not in original design)
+- ❌ 4B.4: Skipped Codex color in useEventColors (using existing color scheme)
+
+**4C: Stats Panel**
+- ❌ Skipped for MVP - existing SessionInfoCard and SessionCostTracker already provide per-session metrics
+
+#### 📦 Files Modified
+
+```
+apps/client/src/
+├── App.vue                         # Added agentType to filters ref
+├── components/
+│   ├── FilterPanel.vue              # Added agent_type dropdown (4th filter)
+│   ├── EventRow.vue                 # Added agent type badge (mobile + desktop)
+│   └── EventTimeline.vue            # Added agentType filter logic + type def
+└── composables/
+    └── useEventEmojis.ts            # Added TaskStart/TaskComplete/TaskError
+```
+
+**Total changes:** 5 files, +39 lines, -5 lines
+
+#### 🎨 Design Decisions
+
+1. **Minimal Badge Design**: Only show agent type badge when `agent_type !== 'claude'` to reduce visual clutter (Claude is the default)
+2. **Purple Badge Styling**: Used purple color scheme (border + background) to differentiate from other badges
+3. **Tooltip on Hover**: Badge shows full agent info including version on hover
+4. **No Stats Panel**: Decided to skip StatsPanel.vue for MVP since SessionInfoCard and SessionCostTracker already aggregate session-level metrics. Can add later if per-agent breakdown needed.
+
+#### ✅ Testing
+
+- TypeScript compilation: ✅ Passes (no agentType-related errors)
+- Backend ready: ✅ `getFilterOptions()` already returns `agent_types` array
+- Filter state: ✅ Properly typed and wired through App.vue → FilterPanel → EventTimeline
+- Visual rendering: Ready for manual testing with Codex events
+
+#### 🔄 Next Steps
+
+- Phase 5: Integration testing with mixed Claude + Codex events
+- Test filter functionality in running dashboard
+- Verify agent badges appear correctly

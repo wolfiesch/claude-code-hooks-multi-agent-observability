@@ -198,7 +198,8 @@ const { getHexColorForApp } = useEventColors();
 const filters = ref({
   sourceApp: '',
   sessionId: '',
-  eventType: ''
+  eventType: '',
+  agentType: ''
 });
 
 // UI state

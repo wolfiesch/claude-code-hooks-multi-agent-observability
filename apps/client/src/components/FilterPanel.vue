@@ -48,7 +48,23 @@
           </option>
         </select>
       </div>
-      
+
+      <div class="flex-1 min-w-0 mobile:w-full">
+        <label class="block text-base mobile:text-sm font-bold text-[var(--theme-primary)] mb-1.5 drop-shadow-sm">
+          Agent Type
+        </label>
+        <select
+          v-model="localFilters.agentType"
+          @change="updateFilters"
+          class="w-full px-4 py-2 mobile:px-2 mobile:py-1.5 text-base mobile:text-sm border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 focus:border-[var(--theme-primary-dark)] bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] shadow-md hover:shadow-lg transition-all duration-200"
+        >
+          <option value="">All Agents</option>
+          <option v-for="agent in filterOptions.agent_types" :key="agent" :value="agent">
+            {{ agent }}
+          </option>
+        </select>
+      </div>
+
       <button
         v-if="hasActiveFilters"
         @click="clearFilters"
@@ -70,6 +86,7 @@ const props = defineProps<{
     sourceApp: string;
     sessionId: string;
     eventType: string;
+    agentType: string;
   };
 }>();
 
@@ -80,13 +97,14 @@ const emit = defineEmits<{
 const filterOptions = ref<FilterOptions>({
   source_apps: [],
   session_ids: [],
-  hook_event_types: []
+  hook_event_types: [],
+  agent_types: []
 });
 
 const localFilters = ref({ ...props.filters });
 
 const hasActiveFilters = computed(() => {
-  return localFilters.value.sourceApp || localFilters.value.sessionId || localFilters.value.eventType;
+  return localFilters.value.sourceApp || localFilters.value.sessionId || localFilters.value.eventType || localFilters.value.agentType;
 });
 
 const updateFilters = () => {
@@ -97,7 +115,8 @@ const clearFilters = () => {
   localFilters.value = {
     sourceApp: '',
     sessionId: '',
-    eventType: ''
+    eventType: '',
+    agentType: ''
   };
   updateFilters();
 };

@@ -112,6 +112,7 @@ const props = defineProps<{
     sourceApp: string;
     sessionId: string;
     eventType: string;
+    agentType: string;
   };
   stickToBottom: boolean;
   uniqueAppNames?: string[]; // Agent IDs (app:session) active in current time window
@@ -151,6 +152,9 @@ const filteredEvents = computed(() => {
       return false;
     }
     if (props.filters.eventType && event.hook_event_type !== props.filters.eventType) {
+      return false;
+    }
+    if (props.filters.agentType && (event.agent_type || 'claude') !== props.filters.agentType) {
       return false;
     }
     return true;
