@@ -121,6 +121,12 @@ export function initDatabase(): void {
     if (!hasAgentVersionColumn) {
       db.exec('ALTER TABLE events ADD COLUMN agent_version TEXT');
     }
+
+    // Check if parent_session_id column exists, add it if not (for parent-child tracking)
+    const hasParentSessionIdColumn = columns.some((col: any) => col.name === 'parent_session_id');
+    if (!hasParentSessionIdColumn) {
+      db.exec('ALTER TABLE events ADD COLUMN parent_session_id TEXT');
+    }
   } catch (error) {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
@@ -131,6 +137,7 @@ export function initDatabase(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_hook_event_type ON events(hook_event_type)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_agent_type ON events(agent_type)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_parent_session_id ON events(parent_session_id)');
   
   // Create themes table
   db.exec(`
@@ -191,8 +198,8 @@ export function initDatabase(): void {
 
 export function insertEvent(event: HookEvent): HookEvent {
   const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const timestamp = event.timestamp || Date.now();
@@ -224,7 +231,8 @@ export function insertEvent(event: HookEvent): HookEvent {
     (event as any).sessionStats ? JSON.stringify((event as any).sessionStats) : null,
     (event as any).workflow ? JSON.stringify((event as any).workflow) : null,
     event.agent_type || 'claude',
-    event.agent_version || null
+    event.agent_version || null,
+    event.parent_session_id || null
   );
 
   return {
@@ -251,7 +259,7 @@ export function getFilterOptions(): FilterOptions {
 
 export function getRecentEvents(limit: number = 300): HookEvent[] {
   const stmt = db.prepare(`
-    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version
+    SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id
     FROM events
     ORDER BY timestamp DESC
     LIMIT ?
