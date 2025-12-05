@@ -204,6 +204,9 @@ apps/server/events.db-wal
 apps/server/observability.db
 apps/server/observability.db-shm
 apps/server/observability.db-wal
+# Database backups
+apps/server/*.db.backup-*
+*.db.backup-*
 
 # Logs (but preserve logs directory structure)
 logs/*
