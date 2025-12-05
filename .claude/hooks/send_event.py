@@ -45,33 +45,104 @@ try:
 except ImportError:
     PARSER_AVAILABLE = False
 
-def send_event_to_server(event_data, server_url='http://localhost:4000/events'):
-    """Send event data to the observability server."""
+def get_queue_file():
+    """Get the path to the event queue file."""
+    from pathlib import Path
+    # Use project-local queue in .claude/data/
+    project_dir = os.environ.get('CLAUDE_PROJECT_DIR', os.getcwd())
+    queue_dir = Path(project_dir) / '.claude' / 'data'
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    return queue_dir / 'event_queue.jsonl'
+
+def queue_event(event_data):
+    """Queue event for later delivery if server unavailable."""
     try:
-        # Prepare the request
-        req = urllib.request.Request(
-            server_url,
-            data=json.dumps(event_data).encode('utf-8'),
-            headers={
-                'Content-Type': 'application/json',
-                'User-Agent': 'Claude-Code-Hook/1.0'
-            }
-        )
-        
-        # Send the request
-        with urllib.request.urlopen(req, timeout=5) as response:
-            if response.status == 200:
-                return True
-            else:
-                print(f"Server returned status: {response.status}", file=sys.stderr)
-                return False
-                
-    except urllib.error.URLError as e:
-        print(f"Failed to send event: {e}", file=sys.stderr)
-        return False
+        queue_file = get_queue_file()
+        with open(queue_file, 'a') as f:
+            f.write(json.dumps(event_data) + '\n')
+        return True
     except Exception as e:
-        print(f"Unexpected error: {e}", file=sys.stderr)
+        print(f"Failed to queue event: {e}", file=sys.stderr)
         return False
+
+def flush_queue(server_url='http://localhost:4000/events'):
+    """Attempt to send queued events."""
+    queue_file = get_queue_file()
+    if not queue_file.exists():
+        return
+
+    try:
+        # Read queued events
+        with open(queue_file, 'r') as f:
+            queued_events = [json.loads(line.strip()) for line in f if line.strip()]
+
+        if not queued_events:
+            return
+
+        # Try to send each queued event
+        successful = []
+        for i, event in enumerate(queued_events):
+            if send_event_to_server(event, server_url, retry=False):
+                successful.append(i)
+
+        # Remove successfully sent events from queue
+        if successful:
+            remaining = [e for i, e in enumerate(queued_events) if i not in successful]
+            with open(queue_file, 'w') as f:
+                for event in remaining:
+                    f.write(json.dumps(event) + '\n')
+
+            # If queue is now empty, delete the file
+            if not remaining:
+                queue_file.unlink()
+
+    except Exception as e:
+        print(f"Failed to flush queue: {e}", file=sys.stderr)
+
+def send_event_to_server(event_data, server_url='http://localhost:4000/events', retry=True, max_retries=3):
+    """Send event data to the observability server with retry logic."""
+    import time
+
+    for attempt in range(max_retries if retry else 1):
+        try:
+            # Prepare the request
+            req = urllib.request.Request(
+                server_url,
+                data=json.dumps(event_data).encode('utf-8'),
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Claude-Code-Hook/1.0'
+                }
+            )
+
+            # Send the request
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    # Success! Try to flush any queued events
+                    if retry:
+                        flush_queue(server_url)
+                    return True
+                else:
+                    print(f"Server returned status: {response.status}", file=sys.stderr)
+
+        except urllib.error.URLError as e:
+            if attempt < max_retries - 1 and retry:
+                # Exponential backoff: 0.5s, 1s, 2s
+                wait_time = 0.5 * (2 ** attempt)
+                time.sleep(wait_time)
+                continue
+            else:
+                print(f"Failed to send event after {attempt + 1} attempts: {e}", file=sys.stderr)
+
+        except Exception as e:
+            print(f"Unexpected error: {e}", file=sys.stderr)
+            break
+
+    # All retries failed - queue the event for later
+    if retry:
+        queue_event(event_data)
+
+    return False
 
 def main():
     # Parse command line arguments
@@ -81,7 +152,19 @@ def main():
     parser.add_argument('--server-url', default='http://localhost:4000/events', help='Server URL')
     parser.add_argument('--add-chat', action='store_true', help='Include chat transcript if available')
     parser.add_argument('--summarize', action='store_true', help='Generate AI summary of the event')
-    
+
+    # Multi-agent support arguments
+    parser.add_argument('--agent-type',
+        type=str,
+        default='claude',
+        choices=['claude', 'codex', 'gemini', 'custom'],
+        help='Type of AI agent generating this event (default: claude)')
+
+    parser.add_argument('--agent-version',
+        type=str,
+        default=None,
+        help='Agent CLI version (e.g., "0.64.0" for Codex)')
+
     args = parser.parse_args()
     
     try:
@@ -165,11 +248,17 @@ def main():
         'payload': input_data,
         'timestamp': int(datetime.now().timestamp() * 1000),
         'model_name': model_name,
+        # ✨ Multi-agent support
+        'agent_type': args.agent_type,
         # ✨ Add Tier 0 metadata (git, session, environment)
         **tier0_metadata,
         # ✨ Add Tier 1 metadata (tool performance + session stats)
         **tier1_metadata
     }
+
+    # Add agent_version if provided
+    if args.agent_version:
+        event_data['agent_version'] = args.agent_version
 
     # ✨ Add Tier 2 metadata (workflow intelligence) as nested object
     if tier2_metadata:
