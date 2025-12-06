@@ -218,3 +218,109 @@ func (c *OpenAIClient) Summarize(eventType string, payload map[string]interface{
 
 	return cleanSummary(apiResp.Choices[0].Message.Content), nil
 }
+
+// ============================================================================
+// Anthropic Client Implementation
+// ============================================================================
+
+// AnthropicClient handles communication with Anthropic API
+type AnthropicClient struct {
+	apiKey     string
+	apiURL     string
+	httpClient *http.Client
+}
+
+// Anthropic API types
+type AnthropicRequest struct {
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	Temperature float64            `json:"temperature,omitempty"`
+	Messages    []AnthropicMessage `json:"messages"`
+}
+
+type AnthropicMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type AnthropicResponse struct {
+	Content []AnthropicContentBlock `json:"content"`
+	Error   *AnthropicError         `json:"error,omitempty"`
+}
+
+type AnthropicContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type AnthropicError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+// NewAnthropicClient creates a new Anthropic client
+func NewAnthropicClient(apiKey string) *AnthropicClient {
+	return &AnthropicClient{
+		apiKey:     apiKey,
+		apiURL:     anthropicAPIURL,
+		httpClient: newHTTPClient(),
+	}
+}
+
+// Provider returns the provider name
+func (c *AnthropicClient) Provider() string {
+	return "anthropic"
+}
+
+// Summarize generates a summary using Anthropic
+func (c *AnthropicClient) Summarize(eventType string, payload map[string]interface{}) (string, error) {
+	prompt := buildSummaryPrompt(eventType, payload)
+
+	reqBody := AnthropicRequest{
+		Model:       anthropicModel,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: prompt},
+		},
+	}
+
+	reqData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.apiURL, bytes.NewReader(reqData))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.apiKey)
+	req.Header.Set("anthropic-version", anthropicAPIVersion)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var apiResp AnthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+
+	if apiResp.Error != nil {
+		return "", fmt.Errorf("API error: %s - %s", apiResp.Error.Type, apiResp.Error.Message)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	if len(apiResp.Content) == 0 {
+		return "", fmt.Errorf("empty response content")
+	}
+
+	return cleanSummary(apiResp.Content[0].Text), nil
+}

@@ -129,3 +129,57 @@ func TestOpenAIClient_Summarize_Timeout(t *testing.T) {
 		t.Error("Expected timeout error, got nil")
 	}
 }
+
+func TestAnthropicClient_Summarize_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify request headers
+		if r.Header.Get("x-api-key") != "test-anthropic-key" {
+			t.Error("Missing or incorrect x-api-key header")
+		}
+		if r.Header.Get("anthropic-version") != "2023-06-01" {
+			t.Error("Missing or incorrect anthropic-version header")
+		}
+
+		// Verify request body
+		var req AnthropicRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("Failed to decode request: %v", err)
+		}
+		if req.Model != "claude-haiku-4-5-20251001" {
+			t.Errorf("Expected claude-haiku model, got %s", req.Model)
+		}
+
+		// Return mock response
+		resp := AnthropicResponse{
+			Content: []AnthropicContentBlock{
+				{Type: "text", Text: "Executes npm install command"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := &AnthropicClient{
+		apiKey:     "test-anthropic-key",
+		apiURL:     server.URL,
+		httpClient: &http.Client{Timeout: 2 * time.Second},
+	}
+
+	summary, err := client.Summarize("PostToolUse", map[string]interface{}{
+		"tool_name": "Bash",
+	})
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if summary != "Executes npm install command" {
+		t.Errorf("Expected summary 'Executes npm install command', got '%s'", summary)
+	}
+}
+
+func TestAnthropicClient_Provider(t *testing.T) {
+	client := &AnthropicClient{}
+	if client.Provider() != "anthropic" {
+		t.Errorf("Expected provider 'anthropic', got '%s'", client.Provider())
+	}
+}
