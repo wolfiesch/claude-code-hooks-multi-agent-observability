@@ -117,10 +117,10 @@ The `--summarize` flag enables AI-generated summaries of hook events using **nat
 The binary automatically selects the best available provider:
 
 1. **OpenAI** (Primary) - Set `OPENAI_API_KEY`
-   - Model: `gpt-4o-mini`
-   - Cost: ~$0.0001 per event (0.01¢)
+   - Model: `gpt-5-nano`
+   - Cost: ~$0.00005 per event (0.005¢)
    - Fastest, most cost-effective
-   - **8x cheaper than Anthropic**
+   - **15x cheaper than Anthropic**
 
 2. **Anthropic** (Secondary) - Set `ANTHROPIC_API_KEY`
    - Model: `claude-haiku-4-5-20251001`
@@ -151,11 +151,12 @@ claude-hook --source-app claude-global --event-type PostToolUse --summarize
 |--------|-------|
 | Timeout | 2 seconds (hard limit) |
 | Typical latency | 100-300ms |
-| Per-event cost (OpenAI) | $0.0001 (0.01¢) |
-| Per-session cost (75 tools) | $0.0075 (0.75¢) |
-| Per 100 sessions/month | $0.75 |
+| Per-event cost (OpenAI) | $0.00005 (0.005¢) |
+| Per-session cost (76 tools) | $0.0040 (0.4¢) |
+| Per 200 sessions/month | $0.79 |
+| Per 300 sessions/month | $1.18 |
 
-**Cost is negligible** - even heavy users (100+ sessions/month) spend less than $1/month.
+**Cost is negligible** - even heavy users (300+ sessions/month) spend ~$1/month.
 
 ### Example Output
 

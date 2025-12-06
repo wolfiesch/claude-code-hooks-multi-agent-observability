@@ -14,7 +14,7 @@ import (
 const (
 	// OpenAI configuration
 	openaiAPIURL = "https://api.openai.com/v1/chat/completions"
-	openaiModel  = "gpt-4o-mini"
+	openaiModel  = "gpt-5-nano"
 
 	// Anthropic configuration
 	anthropicAPIURL     = "https://api.anthropic.com/v1/messages"
