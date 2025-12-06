@@ -903,7 +903,7 @@ export function upsertSessionSummary(event: HookEvent): void {
     const updateStmt = db.prepare(`
       UPDATE session_summaries SET
         end_time = COALESCE(?, end_time),
-        duration_ms = COALESCE(? - start_time, duration_ms),
+        duration_ms = ? - start_time,
         status = ?,
         has_errors = ?,
         has_hitl = ?,
@@ -918,7 +918,7 @@ export function upsertSessionSummary(event: HookEvent): void {
 
     updateStmt.run(
       event.hook_event_type === 'SessionEnd' ? timestamp : null,
-      event.hook_event_type === 'SessionEnd' ? timestamp : null,
+      timestamp, // Always update duration based on latest event
       status,
       existing.has_errors || (critical.is_critical && critical.type === 'error') ? 1 : 0,
       existing.has_hitl || (critical.is_critical && critical.type === 'hitl') ? 1 : 0,
@@ -958,9 +958,9 @@ export function upsertSessionSummary(event: HookEvent): void {
       null, // script_name - will add in future
       metadata.branch_name || null,
       metadata.commit_hash || null,
-      timestamp,
-      event.hook_event_type === 'SessionEnd' ? timestamp : null,
-      event.hook_event_type === 'SessionEnd' ? 0 : null,
+      timestamp, // start_time
+      event.hook_event_type === 'SessionEnd' ? timestamp : null, // end_time
+      0, // duration_ms - always 0 for first event (will be updated on subsequent events)
       'ongoing',
       critical.is_critical && critical.type === 'error' ? 1 : 0,
       critical.is_critical && critical.type === 'hitl' ? 1 : 0,
@@ -969,7 +969,7 @@ export function upsertSessionSummary(event: HookEvent): void {
       event.cost_usd || 0,
       event.model_name || null,
       JSON.stringify(criticalSummary),
-      timestamp
+      timestamp // last_updated
     );
   }
 }
