@@ -2,7 +2,7 @@
   <div class="h-screen flex flex-col bg-[var(--theme-bg-secondary)]">
     <!-- Header with Primary Theme Colors -->
     <header class="short:hidden bg-gradient-to-r from-[var(--theme-primary)] to-[var(--theme-primary-light)] shadow-lg border-b-2 border-[var(--theme-primary-dark)]">
-      <div class="px-3 py-4 mobile:py-1.5 mobile:px-2 flex items-center justify-between mobile:gap-2">
+      <div class="px-3 py-4 mobile:py-1.5 mobile:px-2 flex items-center gap-3 flex-wrap">
         <!-- Title Section - Hidden on mobile -->
         <div class="mobile:hidden">
           <h1 class="text-2xl font-bold text-white drop-shadow-lg">
@@ -10,8 +10,26 @@
           </h1>
         </div>
 
+        <!-- Tabs -->
+        <div class="flex items-center bg-white/15 rounded-full p-1 shadow-lg border border-white/30">
+          <button
+            class="px-3 py-1.5 text-sm font-semibold rounded-full transition-theme"
+            :class="isLiveTab ? 'bg-white text-[var(--theme-text-primary)] shadow' : 'text-white/80 hover:text-white'"
+            @click="currentTab = 'live'"
+          >
+            Live
+          </button>
+          <button
+            class="px-3 py-1.5 text-sm font-semibold rounded-full transition-theme"
+            :class="!isLiveTab ? 'bg-white text-[var(--theme-text-primary)] shadow' : 'text-white/80 hover:text-white'"
+            @click="currentTab = 'history'"
+          >
+            History
+          </button>
+        </div>
+
         <!-- Connection Status -->
-        <div class="flex items-center mobile:space-x-1 space-x-1.5">
+        <div class="flex items-center mobile:space-x-1 space-x-1.5 ml-auto">
           <div v-if="isConnected" class="flex items-center mobile:space-x-0.5 space-x-1.5">
             <span class="relative flex mobile:h-2 mobile:w-2 h-3 w-3">
               <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -27,50 +45,52 @@
           </div>
         </div>
 
-        <!-- Event Count and Theme Toggle -->
+        <!-- Event Count and Controls -->
         <div class="flex items-center mobile:space-x-1 space-x-2">
-          <span class="text-base mobile:text-xs text-white font-semibold drop-shadow-md bg-[var(--theme-primary-dark)] mobile:px-2 mobile:py-0.5 px-3 py-1.5 rounded-full border border-white/30">
-            {{ events.length }}
-          </span>
+          <template v-if="isLiveTab">
+            <span class="text-base mobile:text-xs text-white font-semibold drop-shadow-md bg-[var(--theme-primary-dark)] mobile:px-2 mobile:py-0.5 px-3 py-1.5 rounded-full border border-white/30">
+              {{ events.length }}
+            </span>
 
-          <!-- Clear Button -->
-          <button
-            @click="handleClearClick"
-            class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
-            title="Clear events"
-          >
-            <span class="text-2xl mobile:text-base">🗑️</span>
-          </button>
+            <!-- Clear Button -->
+            <button
+              @click="handleClearClick"
+              class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              title="Clear events"
+            >
+              <span class="text-2xl mobile:text-base">🗑️</span>
+            </button>
 
-          <!-- Search Toggle Button -->
-          <button
-            @click="showSearch = !showSearch"
-            class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
-            :class="{ 'ring-2 ring-white': showSearch }"
-            :title="showSearch ? 'Hide search' : 'Show search'"
-          >
-            <span class="text-2xl mobile:text-base">&#128269;</span>
-          </button>
+            <!-- Search Toggle Button -->
+            <button
+              @click="showSearch = !showSearch"
+              class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              :class="{ 'ring-2 ring-white': showSearch }"
+              :title="showSearch ? 'Hide search' : 'Show search'"
+            >
+              <span class="text-2xl mobile:text-base">&#128269;</span>
+            </button>
 
-          <!-- Replay Toggle Button -->
-          <button
-            @click="showReplay = !showReplay"
-            class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
-            :class="{ 'ring-2 ring-white': showReplay }"
-            :title="showReplay ? 'Hide replay' : 'Session replay'"
-          >
-            <span class="text-2xl mobile:text-base">&#128250;</span>
-          </button>
+            <!-- Replay Toggle Button -->
+            <button
+              @click="showReplay = !showReplay"
+              class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              :class="{ 'ring-2 ring-white': showReplay }"
+              :title="showReplay ? 'Hide replay' : 'Session replay'"
+            >
+              <span class="text-2xl mobile:text-base">&#128250;</span>
+            </button>
 
-          <!-- Filters Toggle Button -->
-          <button
-            @click="showFilters = !showFilters"
-            class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
-            :class="{ 'ring-2 ring-white': showFilters }"
-            :title="showFilters ? 'Hide filters' : 'Show filters'"
-          >
-            <span class="text-2xl mobile:text-base">&#128202;</span>
-          </button>
+            <!-- Filters Toggle Button -->
+            <button
+              @click="showFilters = !showFilters"
+              class="p-3 mobile:p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 border border-white/30 hover:border-white/50 backdrop-blur-sm shadow-lg hover:shadow-xl"
+              :class="{ 'ring-2 ring-white': showFilters }"
+              :title="showFilters ? 'Hide filters' : 'Show filters'"
+            >
+              <span class="text-2xl mobile:text-base">&#128202;</span>
+            </button>
+          </template>
 
           <!-- Theme Manager Button -->
           <button
@@ -84,109 +104,118 @@
       </div>
     </header>
     
-    <!-- Metadata Panels (Session Info + Environment + Todo Progress + Cost) -->
-    <ErrorBoundary
-      fallback-title="Metadata Panel Error"
-      fallback-message="Unable to display session metadata. The dashboard will continue to function."
-    >
-      <div v-if="events.length > 0" class="px-3 py-3 mobile:px-2 mobile:py-2 bg-[var(--theme-bg-secondary)] border-b border-[var(--theme-border-primary)]">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
-          <SessionInfoCard :events="events" />
-          <EnvironmentInfoPanel :envInfo="latestEnvironment" />
-          <TodoProgressWidget :todoTracking="latestTodoTracking" />
-          <SessionCostTracker :events="events" :sessionDuration="sessionDuration" />
-        </div>
-      </div>
-    </ErrorBoundary>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <template v-if="isLiveTab">
+        <!-- Metadata Panels (Session Info + Environment + Todo Progress + Cost) -->
+        <ErrorBoundary
+          fallback-title="Metadata Panel Error"
+          fallback-message="Unable to display session metadata. The dashboard will continue to function."
+        >
+          <div v-if="events.length > 0" class="px-3 py-3 mobile:px-2 mobile:py-2 bg-[var(--theme-bg-secondary)] border-b border-[var(--theme-border-primary)]">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
+              <SessionInfoCard :events="events" />
+              <EnvironmentInfoPanel :envInfo="latestEnvironment" />
+              <TodoProgressWidget :todoTracking="latestTodoTracking" />
+              <SessionCostTracker :events="events" :sessionDuration="sessionDuration" />
+            </div>
+          </div>
+        </ErrorBoundary>
 
-    <!-- Search Panel -->
-    <SearchPanel
-      v-if="showSearch"
-      class="short:hidden"
-      v-model="searchResults"
-      @search="handleSearchResults"
-      @clear="handleSearchClear"
-    />
-
-    <!-- Filters -->
-    <FilterPanel
-      v-if="showFilters"
-      class="short:hidden"
-      :filters="filters"
-      :source-app-options="availableSourceApps"
-      :session-id-options="availableSessionIds"
-      :agent-type-options="availableAgentTypes"
-      :event-type-options="availableEventTypes"
-      @update:filters="updateFilters"
-    />
-    
-    <!-- Live Pulse Chart -->
-    <ErrorBoundary
-      fallback-title="Chart Error"
-      fallback-message="Unable to display the activity chart. Event timeline is still available below."
-    >
-      <LivePulseChart
-        :events="events"
-        :filters="filters"
-        :agent-type-options="availableAgentTypes"
-        :event-type-options="availableEventTypes"
-        @update-unique-apps="uniqueAppNames = $event"
-        @update-all-apps="allAppNames = $event"
-        @update-time-range="currentTimeRange = $event"
-        @update-filters="updateFilters"
-      />
-    </ErrorBoundary>
-
-    <!-- Agent Swim Lane Container (below pulse chart, full width, scrollable with max-height) -->
-    <ErrorBoundary
-      fallback-title="Swim Lane Error"
-      fallback-message="Unable to display agent swim lanes. The event timeline below is still functional."
-    >
-      <div
-        v-if="selectedAgentLanes.length > 0"
-        class="w-full bg-[var(--theme-bg-secondary)] px-3 py-4 mobile:px-2 mobile:py-2 overflow-y-auto border-b border-[var(--theme-border-primary)]"
-        style="max-height: 50vh;"
-      >
-        <AgentSwimLaneContainer
-          :selected-agents="selectedAgentLanes"
-          :events="events"
-          :time-range="currentTimeRange"
-          @update:selected-agents="selectedAgentLanes = $event"
+        <!-- Search Panel -->
+        <SearchPanel
+          v-if="showSearch"
+          class="short:hidden"
+          v-model="searchResults"
+          @search="handleSearchResults"
+          @clear="handleSearchClear"
         />
-      </div>
-    </ErrorBoundary>
 
-    <!-- Timeline -->
-    <ErrorBoundary
-      fallback-title="Timeline Error"
-      fallback-message="Unable to display the event timeline. Try refreshing the page or clearing events."
-    >
-      <div class="flex flex-col flex-1 overflow-hidden">
-        <EventTimeline
-          :events="events"
+        <!-- Filters -->
+        <FilterPanel
+          v-if="showFilters"
+          class="short:hidden"
           :filters="filters"
-          :unique-app-names="uniqueAppNames"
-          :all-app-names="allAppNames"
-          :selected-agents="selectedAgentLanes"
-          v-model:stick-to-bottom="stickToBottom"
-          @select-agent="toggleAgentLane"
+          :source-app-options="availableSourceApps"
+          :session-id-options="availableSessionIds"
+          :agent-type-options="availableAgentTypes"
+          :event-type-options="availableEventTypes"
+          @update:filters="updateFilters"
         />
-      </div>
-    </ErrorBoundary>
-    
-    <!-- Stick to bottom button -->
-    <StickScrollButton
-      class="short:hidden"
-      :stick-to-bottom="stickToBottom"
-      @toggle="stickToBottom = !stickToBottom"
-    />
-    
-    <!-- Error message -->
-    <div
-      v-if="error"
-      class="fixed bottom-4 left-4 mobile:bottom-3 mobile:left-3 mobile:right-3 bg-red-100 border border-red-400 text-red-700 px-3 py-2 mobile:px-2 mobile:py-1.5 rounded mobile:text-xs"
-    >
-      {{ error }}
+        
+        <!-- Live Pulse Chart -->
+        <ErrorBoundary
+          fallback-title="Chart Error"
+          fallback-message="Unable to display the activity chart. Event timeline is still available below."
+        >
+          <LivePulseChart
+            :events="events"
+            :filters="filters"
+            :agent-type-options="availableAgentTypes"
+            :event-type-options="availableEventTypes"
+            @update-unique-apps="uniqueAppNames = $event"
+            @update-all-apps="allAppNames = $event"
+            @update-time-range="currentTimeRange = $event"
+            @update-filters="updateFilters"
+          />
+        </ErrorBoundary>
+
+        <!-- Content Area: Swim Lanes + Timeline (guaranteed to fit in remaining space) -->
+        <div class="flex flex-col flex-1 overflow-hidden min-h-0">
+          <!-- Agent Swim Lane Container (scrollable with max-height) -->
+          <ErrorBoundary
+            fallback-title="Swim Lane Error"
+            fallback-message="Unable to display agent swim lanes. The event timeline below is still functional."
+          >
+            <div
+              v-if="selectedAgentLanes.length > 0"
+              class="w-full bg-[var(--theme-bg-secondary)] px-3 py-4 mobile:px-2 mobile:py-2 overflow-y-auto border-b border-[var(--theme-border-primary)] flex-shrink-0"
+              style="max-height: 35vh;"
+            >
+              <AgentSwimLaneContainer
+                :selected-agents="selectedAgentLanes"
+                :events="events"
+                :time-range="currentTimeRange"
+                @update:selected-agents="selectedAgentLanes = $event"
+              />
+            </div>
+          </ErrorBoundary>
+
+          <!-- Timeline (always visible with guaranteed minimum space) -->
+          <ErrorBoundary
+            fallback-title="Timeline Error"
+            fallback-message="Unable to display the event timeline. Try refreshing the page or clearing events."
+          >
+            <div class="flex flex-col flex-1 overflow-hidden" style="min-height: 300px;">
+              <EventTimeline
+                :events="events"
+                :filters="filters"
+                :unique-app-names="uniqueAppNames"
+                :all-app-names="allAppNames"
+                :selected-agents="selectedAgentLanes"
+                v-model:stick-to-bottom="stickToBottom"
+                @select-agent="toggleAgentLane"
+              />
+            </div>
+          </ErrorBoundary>
+        </div>
+        
+        <!-- Stick to bottom button -->
+        <StickScrollButton
+          class="short:hidden"
+          :stick-to-bottom="stickToBottom"
+          @toggle="stickToBottom = !stickToBottom"
+        />
+        
+        <!-- Error message -->
+        <div
+          v-if="error"
+          class="fixed bottom-4 left-4 mobile:bottom-3 mobile:left-3 mobile:right-3 bg-red-100 border border-red-400 text-red-700 px-3 py-2 mobile:px-2 mobile:py-1.5 rounded mobile:text-xs"
+        >
+          {{ error }}
+        </div>
+      </template>
+
+      <HistoryPage v-else class="flex-1" />
     </div>
     
     <!-- Theme Manager -->
@@ -197,7 +226,7 @@
 
     <!-- Session Replay Modal -->
     <div
-      v-if="showReplay"
+      v-if="showReplay && isLiveTab"
       class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
       @click.self="showReplay = false"
     >
@@ -208,6 +237,7 @@
 
     <!-- Toast Notifications -->
     <ToastNotification
+      v-if="isLiveTab"
       v-for="(toast, index) in toasts"
       :key="toast.id"
       :index="index"
@@ -238,10 +268,15 @@ import SessionCostTracker from './components/SessionCostTracker.vue';
 import ErrorBoundary from './components/ErrorBoundary.vue';
 import SearchPanel from './components/SearchPanel.vue';
 import SessionReplay from './components/SessionReplay.vue';
+import HistoryPage from './components/HistoryPage.vue';
 import { WS_URL } from './config';
 
 // WebSocket connection
 const { events, isConnected, error, clearEvents } = useWebSocket(WS_URL);
+
+// Tab navigation
+const currentTab = ref<'live' | 'history'>('live');
+const isLiveTab = computed(() => currentTab.value === 'live');
 
 // Theme management (sets up theme system)
 useThemes();
