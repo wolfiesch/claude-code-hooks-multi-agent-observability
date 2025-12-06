@@ -14,12 +14,13 @@
 ## Features
 
 - ✅ **Complete feature parity** with `send_event.py`
+- ✅ **Native LLM summarization**: Multi-provider support (OpenAI/Anthropic)
 - ✅ **Tier 0 metadata**: Git context, session context, environment context
 - ✅ **Tier 1 metadata**: Tool performance, session stats
 - ✅ **Event queueing**: Offline support with auto-retry
 - ✅ **Backward compatible**: Drop-in replacement
 - ⚡ **Sub-millisecond startup**: No Python interpreter overhead
-- 📦 **Single binary**: No dependencies, ~2MB binary
+- 📦 **Single binary**: No dependencies, ~5.6MB binary
 
 ## Quick Start
 
@@ -104,8 +105,72 @@ Options:
   --agent-type string      Agent type: claude, codex, gemini (default: claude)
   --agent-version string   Agent CLI version (optional)
   --add-chat              Include chat transcript
-  --summarize             Generate AI summary (falls back to Python)
+  --summarize             Generate AI summary using OpenAI/Anthropic
 ```
+
+## LLM Summarization
+
+The `--summarize` flag enables AI-generated summaries of hook events using **native Go implementation** with multi-provider support. No Python dependencies required.
+
+### Provider Priority
+
+The binary automatically selects the best available provider:
+
+1. **OpenAI** (Primary) - Set `OPENAI_API_KEY`
+   - Model: `gpt-4o-mini`
+   - Cost: ~$0.0001 per event (0.01¢)
+   - Fastest, most cost-effective
+   - **8x cheaper than Anthropic**
+
+2. **Anthropic** (Secondary) - Set `ANTHROPIC_API_KEY`
+   - Model: `claude-haiku-4-5-20251001`
+   - Cost: ~$0.0008 per event (0.08¢)
+   - Used when OpenAI key not available
+
+3. **None** - No API key set
+   - Summarization silently skipped
+   - Events still sent without summary
+   - Graceful degradation
+
+### Configuration
+
+```bash
+# Use OpenAI (recommended)
+export OPENAI_API_KEY="sk-..."
+
+# Or use Anthropic
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Use in hooks
+claude-hook --source-app claude-global --event-type PostToolUse --summarize
+```
+
+### Performance & Cost
+
+| Metric | Value |
+|--------|-------|
+| Timeout | 2 seconds (hard limit) |
+| Typical latency | 100-300ms |
+| Per-event cost (OpenAI) | $0.0001 (0.01¢) |
+| Per-session cost (75 tools) | $0.0075 (0.75¢) |
+| Per 100 sessions/month | $0.75 |
+
+**Cost is negligible** - even heavy users (100+ sessions/month) spend less than $1/month.
+
+### Example Output
+
+```json
+{
+  "summary": "Reads configuration file from project root",
+  "summaryProvider": "openai"
+}
+```
+
+Summaries are:
+- One sentence, <15 words
+- Technical and specific
+- Present tense, no formatting
+- Included in event payload
 
 ## What's Included
 
@@ -117,10 +182,13 @@ Options:
 - ✅ Environment detection
 - ✅ Model extraction from transcript
 - ✅ Chat transcript inclusion
+- ✅ **Native LLM summarization** (OpenAI/Anthropic)
+- ✅ Multi-provider fallback with graceful degradation
 
-**Python Fallback (when needed):**
-- AI summarization (`--summarize` flag)
-- Workflow intelligence (Tier 2)
+**No Python Dependencies:**
+- ❌ Python interpreter not required
+- ❌ No `uv`, `pip`, or virtual environments
+- ✅ Pure Go stdlib implementation
 
 ## Architecture
 
@@ -227,14 +295,15 @@ cat "$CLAUDE_PROJECT_DIR/.claude/data/event_queue.jsonl"
 curl -X POST http://localhost:4000/events -d '{"test":true}'
 ```
 
-### Want to use both versions?
+### Need AI summarization?
 
 ```bash
-# Keep Python for summarization
-claude-hook --summarize  # Auto-falls back to Python
+# Set API key and use --summarize flag
+export OPENAI_API_KEY="sk-..."
+claude-hook --source-app claude-global --event-type PostToolUse --summarize
 
-# Or call Python directly when needed
-send_event.py --summarize
+# Or use Anthropic as fallback
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 ## Performance Benchmarks
@@ -266,7 +335,7 @@ Speedup: ~100x
 
 **Language**: Go 1.21+
 **Dependencies**: None (stdlib only)
-**Binary size**: ~2MB (statically linked)
+**Binary size**: ~5.6MB (statically linked, includes LLM clients)
 **Platforms**: macOS (darwin/amd64, darwin/arm64), Linux (linux/amd64, linux/arm64)
 
 **Why Go?**
