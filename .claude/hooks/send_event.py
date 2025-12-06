@@ -147,7 +147,7 @@ def send_event_to_server(event_data, server_url='http://localhost:4000/events', 
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Send Claude Code hook events to observability server')
-    parser.add_argument('--source-app', required=True, help='Source application name')
+    parser.add_argument('--source-app', required=False, help='Source application name (auto-detected if not provided)')
     parser.add_argument('--event-type', required=True, help='Hook event type (PreToolUse, PostToolUse, etc.)')
     parser.add_argument('--server-url', default='http://localhost:4000/events', help='Server URL')
     parser.add_argument('--add-chat', action='store_true', help='Include chat transcript if available')
@@ -166,7 +166,17 @@ def main():
         help='Agent CLI version (e.g., "0.64.0" for Codex)')
 
     args = parser.parse_args()
-    
+
+    # Auto-detect source_app from project directory if not provided
+    if not args.source_app:
+        project_dir = os.getenv('CLAUDE_PROJECT_DIR')
+        if project_dir:
+            args.source_app = os.path.basename(project_dir)
+        else:
+            # Fallback to current working directory
+            args.source_app = os.path.basename(os.getcwd())
+        print(f"Auto-detected source_app: {args.source_app}", file=sys.stderr)
+
     try:
         # Read hook data from stdin
         input_data = json.load(sys.stdin)

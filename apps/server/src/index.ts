@@ -2,15 +2,15 @@ import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEve
 import type { SearchParams } from './db';
 import type { HookEvent, HumanInTheLoopResponse, SessionListParams } from './types';
 import { calculateCost, extractTokensFromPayload } from './cost-calculator';
-import { 
-  createTheme, 
-  updateThemeById, 
-  getThemeById, 
-  searchThemes, 
-  deleteThemeById, 
-  exportThemeById, 
+import {
+  createTheme,
+  updateThemeById,
+  getThemeById,
+  searchThemes,
+  deleteThemeById,
+  exportThemeById,
   importTheme,
-  getThemeStats 
+  getThemeStats
 } from './theme';
 
 // Initialize database
