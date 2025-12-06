@@ -12,6 +12,7 @@ export interface ReplayState {
   startTime: number;
   endTime: number;
   totalDuration: number;
+  playbackSpeed: number; // 0.5, 1, 2, 4, etc.
 }
 
 export function useReplay() {
@@ -24,7 +25,8 @@ export function useReplay() {
     error: null,
     startTime: 0,
     endTime: 0,
-    totalDuration: 0
+    totalDuration: 0,
+    playbackSpeed: 1
   });
 
   let playbackInterval: ReturnType<typeof setInterval> | null = null;
@@ -119,6 +121,9 @@ export function useReplay() {
       // Min delay of 100ms so we don't skip too fast
       delay = Math.max(delay, 100);
 
+      // Apply playback speed
+      delay = delay / state.playbackSpeed;
+
       playbackInterval = setTimeout(() => {
         if (state.isPlaying) {
           state.currentIndex++;
@@ -188,6 +193,18 @@ export function useReplay() {
     state.currentIndex = Math.max(0, state.events.length - 1);
   }
 
+  // Set playback speed
+  function setPlaybackSpeed(speed: number): void {
+    const wasPlaying = state.isPlaying;
+    if (wasPlaying) {
+      pause();
+    }
+    state.playbackSpeed = speed;
+    if (wasPlaying) {
+      play();
+    }
+  }
+
   // Reset replay state
   function reset(): void {
     pause();
@@ -198,6 +215,7 @@ export function useReplay() {
     state.startTime = 0;
     state.endTime = 0;
     state.totalDuration = 0;
+    state.playbackSpeed = 1;
   }
 
   // Format duration in mm:ss or hh:mm:ss
@@ -236,6 +254,7 @@ export function useReplay() {
     stepBackward,
     jumpToStart,
     jumpToEnd,
+    setPlaybackSpeed,
     reset,
     formatDuration
   };

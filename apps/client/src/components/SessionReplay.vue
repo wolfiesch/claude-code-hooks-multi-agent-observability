@@ -127,6 +127,22 @@
         </div>
       </div>
 
+      <!-- Playback Speed Controls -->
+      <div class="flex items-center justify-center gap-2 mb-3">
+        <span class="text-xs text-[var(--theme-text-secondary)]">Speed:</span>
+        <button
+          v-for="speed in [0.5, 1, 2, 4]"
+          :key="speed"
+          @click="replay.setPlaybackSpeed(speed)"
+          class="px-2 py-1 text-xs rounded transition-all"
+          :class="replay.state.playbackSpeed === speed
+            ? 'bg-[var(--theme-primary)] text-white font-bold'
+            : 'bg-[var(--theme-bg-secondary)] text-[var(--theme-text-secondary)] hover:bg-[var(--theme-primary)]/20'"
+        >
+          {{ speed }}x
+        </button>
+      </div>
+
       <!-- Playback Controls -->
       <div class="flex items-center justify-center gap-2 mb-4">
         <!-- Jump to Start -->
@@ -205,13 +221,26 @@
           {{ replay.currentEvent.value.summary }}
         </p>
 
-        <!-- Payload Preview -->
-        <details class="text-xs">
-          <summary class="cursor-pointer text-[var(--theme-primary)] hover:underline">
-            View Payload
-          </summary>
-          <pre class="mt-2 p-2 bg-[var(--theme-bg-primary)] rounded overflow-x-auto text-[var(--theme-text-secondary)]">{{ JSON.stringify(replay.currentEvent.value.payload, null, 2) }}</pre>
-        </details>
+        <!-- Payload Display (Always Visible) -->
+        <div class="mt-3">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-semibold text-[var(--theme-primary)]">Payload</span>
+            <button
+              @click="copyPayloadToClipboard"
+              class="px-2 py-1 text-xs bg-[var(--theme-bg-primary)] hover:bg-[var(--theme-primary)]/20 border border-[var(--theme-border-primary)] rounded transition-all flex items-center gap-1"
+              :title="copyButtonText"
+            >
+              <svg v-if="!copied" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <svg v-else class="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span>{{ copyButtonText }}</span>
+            </button>
+          </div>
+          <pre class="p-2 bg-[var(--theme-bg-primary)] rounded overflow-x-auto text-[var(--theme-text-secondary)] text-xs max-h-64 overflow-y-auto">{{ JSON.stringify(replay.currentEvent.value.payload, null, 2) }}</pre>
+        </div>
       </div>
 
       <!-- Reset Button -->
@@ -226,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useReplay } from '../composables/useReplay';
 import type { HookEvent, FilterOptions } from '../types';
 import { API_BASE_URL } from '../config';
@@ -238,6 +267,10 @@ defineEmits<{
 const replay = useReplay();
 const selectedSessionId = ref('');
 const availableSessions = ref<string[]>([]);
+const copied = ref(false);
+
+// Copy button text
+const copyButtonText = computed(() => copied.value ? 'Copied!' : 'Copy');
 
 // Fetch available sessions
 const fetchSessions = async () => {
@@ -298,6 +331,59 @@ const getEventIcon = (type: string) => {
   return '\uD83D\uDCE1';
 };
 
+// Copy payload to clipboard
+const copyPayloadToClipboard = async () => {
+  if (!replay.currentEvent.value) return;
+
+  try {
+    const payloadText = JSON.stringify(replay.currentEvent.value.payload, null, 2);
+    await navigator.clipboard.writeText(payloadText);
+    copied.value = true;
+    setTimeout(() => {
+      copied.value = false;
+    }, 2000);
+  } catch (error) {
+    console.error('Failed to copy payload:', error);
+  }
+};
+
+// Keyboard shortcuts
+const handleKeydown = (event: KeyboardEvent) => {
+  // Don't trigger shortcuts if user is typing in an input
+  const target = event.target as HTMLElement;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+    return;
+  }
+
+  // Only handle shortcuts when a session is loaded
+  if (!replay.state.sessionId || replay.state.events.length === 0) {
+    return;
+  }
+
+  switch (event.key) {
+    case ' ':
+      event.preventDefault();
+      replay.togglePlayPause();
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      replay.stepBackward();
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      replay.stepForward();
+      break;
+    case 'Home':
+      event.preventDefault();
+      replay.jumpToStart();
+      break;
+    case 'End':
+      event.preventDefault();
+      replay.jumpToEnd();
+      break;
+  }
+};
+
 // Format timestamp
 const formatTimestamp = (timestamp?: number) => {
   if (!timestamp) return '';
@@ -306,5 +392,12 @@ const formatTimestamp = (timestamp?: number) => {
 
 onMounted(() => {
   fetchSessions();
+  // Add keyboard event listener
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  // Remove keyboard event listener
+  window.removeEventListener('keydown', handleKeydown);
 });
 </script>
