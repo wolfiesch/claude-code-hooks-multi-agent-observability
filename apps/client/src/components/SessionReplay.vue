@@ -29,12 +29,58 @@
       </label>
       <select
         v-model="selectedSessionId"
-        class="w-full px-4 py-3 text-base border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)]"
+        size="12"
+        class="w-full px-3 py-2 text-sm border border-[var(--theme-primary)] rounded-lg focus:ring-2 focus:ring-[var(--theme-primary)]/30 bg-[var(--theme-bg-primary)] text-[var(--theme-text-primary)] font-mono max-h-96 overflow-y-auto"
       >
-        <option value="">Choose a session...</option>
-        <option v-for="session in availableSessions" :key="session" :value="session">
-          {{ session.slice(0, 8) }}...
-        </option>
+        <option value="" disabled>Choose a session...</option>
+
+        <!-- Today -->
+        <optgroup v-if="groupedSessions.today.length > 0" label="━━━ Today ━━━">
+          <option
+            v-for="session in groupedSessions.today"
+            :key="session.session_id"
+            :value="session.session_id"
+            class="py-1"
+          >
+            {{ formatSessionDisplay(session) }}
+          </option>
+        </optgroup>
+
+        <!-- Yesterday -->
+        <optgroup v-if="groupedSessions.yesterday.length > 0" label="━━━ Yesterday ━━━">
+          <option
+            v-for="session in groupedSessions.yesterday"
+            :key="session.session_id"
+            :value="session.session_id"
+            class="py-1"
+          >
+            {{ formatSessionDisplay(session) }}
+          </option>
+        </optgroup>
+
+        <!-- This Week -->
+        <optgroup v-if="groupedSessions.thisWeek.length > 0" label="━━━ This Week ━━━">
+          <option
+            v-for="session in groupedSessions.thisWeek"
+            :key="session.session_id"
+            :value="session.session_id"
+            class="py-1"
+          >
+            {{ formatSessionDisplay(session) }}
+          </option>
+        </optgroup>
+
+        <!-- Older -->
+        <optgroup v-if="groupedSessions.older.length > 0" label="━━━ Older ━━━">
+          <option
+            v-for="session in groupedSessions.older"
+            :key="session.session_id"
+            :value="session.session_id"
+            class="py-1"
+          >
+            {{ formatSessionDisplay(session) }}
+          </option>
+        </optgroup>
       </select>
       <button
         @click="loadSelectedSession"
@@ -257,7 +303,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useReplay } from '../composables/useReplay';
-import type { HookEvent, FilterOptions } from '../types';
+import type { HookEvent, SessionSummary, SessionsResponse } from '../types';
 import { API_BASE_URL } from '../config';
 
 defineEmits<{
@@ -266,19 +312,82 @@ defineEmits<{
 
 const replay = useReplay();
 const selectedSessionId = ref('');
-const availableSessions = ref<string[]>([]);
+const availableSessions = ref<SessionSummary[]>([]);
 const copied = ref(false);
 
 // Copy button text
 const copyButtonText = computed(() => copied.value ? 'Copied!' : 'Copy');
 
+// Group sessions by date
+const groupedSessions = computed(() => {
+  const now = Date.now();
+  const oneDayAgo = now - 24 * 60 * 60 * 1000;
+  const twoDaysAgo = now - 2 * 24 * 60 * 60 * 1000;
+  const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  const groups = {
+    today: [] as SessionSummary[],
+    yesterday: [] as SessionSummary[],
+    thisWeek: [] as SessionSummary[],
+    older: [] as SessionSummary[]
+  };
+
+  availableSessions.value.forEach(session => {
+    const sessionTime = session.end_time || session.start_time;
+    if (sessionTime >= oneDayAgo) {
+      groups.today.push(session);
+    } else if (sessionTime >= twoDaysAgo) {
+      groups.yesterday.push(session);
+    } else if (sessionTime >= oneWeekAgo) {
+      groups.thisWeek.push(session);
+    } else {
+      groups.older.push(session);
+    }
+  });
+
+  return groups;
+});
+
+// Format session display text
+const formatSessionDisplay = (session: SessionSummary): string => {
+  const time = formatTime(session.end_time || session.start_time);
+  const projectName = session.repo_name || session.project_name || session.source_app;
+  const truncatedProject = projectName.length > 30
+    ? projectName.slice(0, 27) + '...'
+    : projectName;
+  const duration = formatDuration(session.duration_ms || 0);
+  const events = session.event_count;
+
+  return `${time} - ${truncatedProject} • ${events} events • ${duration}`;
+};
+
+// Format time (HH:MM AM/PM)
+const formatTime = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
+// Format duration (X.X min or X.X hr)
+const formatDuration = (ms: number): string => {
+  const minutes = ms / 1000 / 60;
+  if (minutes < 60) {
+    return `${minutes.toFixed(1)} min`;
+  }
+  const hours = minutes / 60;
+  return `${hours.toFixed(1)} hr`;
+};
+
 // Fetch available sessions
 const fetchSessions = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/events/filter-options`);
+    const response = await fetch(`${API_BASE_URL}/sessions?sort_by=recency&limit=200`);
     if (response.ok) {
-      const options: FilterOptions = await response.json();
-      availableSessions.value = options.session_ids;
+      const data: SessionsResponse = await response.json();
+      availableSessions.value = data.sessions;
     }
   } catch (error) {
     console.error('Failed to fetch sessions:', error);
