@@ -15,7 +15,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type PreToolUse --summarize"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type PreToolUse --summarize"
           }
         ]
       }
@@ -30,7 +30,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type PostToolUse --summarize"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type PostToolUse --summarize"
           }
         ]
       }
@@ -44,7 +44,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type Notification --summarize"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type Notification --summarize"
           }
         ]
       }
@@ -58,7 +58,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type Stop --add-chat"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type Stop --add-chat"
           }
         ]
       }
@@ -72,7 +72,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type SubagentStop"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type SubagentStop"
           }
         ]
       }
@@ -86,7 +86,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type PreCompact"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type PreCompact"
           }
         ]
       }
@@ -100,7 +100,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type UserPromptSubmit --summarize"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type UserPromptSubmit --summarize"
           }
         ]
       }
@@ -114,7 +114,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type SessionStart"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type SessionStart"
           }
         ]
       }
@@ -128,7 +128,7 @@
           },
           {
             "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app cc-hook-multi-agent-obvs --event-type SessionEnd"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type SessionEnd"
           }
         ]
       }

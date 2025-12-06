@@ -14,7 +14,7 @@ import (
 const (
 	// OpenAI configuration
 	openaiAPIURL = "https://api.openai.com/v1/chat/completions"
-	openaiModel  = "gpt-5-nano"
+	openaiModel  = "gpt-5-nano-2025-08-07"
 
 	// Anthropic configuration
 	anthropicAPIURL     = "https://api.anthropic.com/v1/messages"
@@ -22,8 +22,8 @@ const (
 	anthropicAPIVersion = "2023-06-01"
 
 	// Shared configuration
-	summarizeTimeout = 2 * time.Second
-	maxTokens        = 100
+	summarizeTimeout = 5 * time.Second // GPT-5-nano with minimal reasoning
+	maxTokens        = 100             // Sufficient with minimal reasoning effort
 	temperature      = 0.3
 )
 
@@ -128,10 +128,10 @@ type OpenAIClient struct {
 
 // OpenAI API types
 type OpenAIRequest struct {
-	Model       string          `json:"model"`
-	Messages    []OpenAIMessage `json:"messages"`
-	MaxTokens   int             `json:"max_tokens"`
-	Temperature float64         `json:"temperature"`
+	Model                string            `json:"model"`
+	Messages             []OpenAIMessage   `json:"messages"`
+	MaxCompletionTokens  int               `json:"max_completion_tokens"`
+	ReasoningEffort      string            `json:"reasoning_effort,omitempty"` // "minimal", "low", "medium", "high", or "none"
 }
 
 type OpenAIMessage struct {
@@ -177,9 +177,9 @@ func (c *OpenAIClient) Summarize(eventType string, payload map[string]interface{
 	prompt := buildSummaryPrompt(eventType, payload)
 
 	reqBody := OpenAIRequest{
-		Model:       openaiModel,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
+		Model:               openaiModel,
+		MaxCompletionTokens: maxTokens,
+		ReasoningEffort:     "minimal", // Minimize reasoning tokens, maximize output tokens
 		Messages: []OpenAIMessage{
 			{Role: "user", Content: prompt},
 		},
