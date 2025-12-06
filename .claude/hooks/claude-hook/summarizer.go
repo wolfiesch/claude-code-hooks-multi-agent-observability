@@ -114,3 +114,107 @@ func cleanSummary(s string) string {
 
 	return s
 }
+
+// ============================================================================
+// OpenAI Client Implementation
+// ============================================================================
+
+// OpenAIClient handles communication with OpenAI API
+type OpenAIClient struct {
+	apiKey     string
+	apiURL     string
+	httpClient *http.Client
+}
+
+// OpenAI API types
+type OpenAIRequest struct {
+	Model       string          `json:"model"`
+	Messages    []OpenAIMessage `json:"messages"`
+	MaxTokens   int             `json:"max_tokens"`
+	Temperature float64         `json:"temperature"`
+}
+
+type OpenAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type OpenAIResponse struct {
+	Choices []OpenAIChoice `json:"choices"`
+	Error   *OpenAIError   `json:"error,omitempty"`
+}
+
+type OpenAIChoice struct {
+	Message OpenAIMessage `json:"message"`
+}
+
+type OpenAIError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+}
+
+// NewOpenAIClient creates a new OpenAI client
+func NewOpenAIClient(apiKey string) *OpenAIClient {
+	return &OpenAIClient{
+		apiKey:     apiKey,
+		apiURL:     openaiAPIURL,
+		httpClient: newHTTPClient(),
+	}
+}
+
+// Provider returns the provider name
+func (c *OpenAIClient) Provider() string {
+	return "openai"
+}
+
+// Summarize generates a summary using OpenAI
+func (c *OpenAIClient) Summarize(eventType string, payload map[string]interface{}) (string, error) {
+	prompt := buildSummaryPrompt(eventType, payload)
+
+	reqBody := OpenAIRequest{
+		Model:       openaiModel,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+		Messages: []OpenAIMessage{
+			{Role: "user", Content: prompt},
+		},
+	}
+
+	reqData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.apiURL, bytes.NewReader(reqData))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var apiResp OpenAIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+
+	if apiResp.Error != nil {
+		return "", fmt.Errorf("API error: %s - %s", apiResp.Error.Type, apiResp.Error.Message)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	if len(apiResp.Choices) == 0 {
+		return "", fmt.Errorf("empty response choices")
+	}
+
+	return cleanSummary(apiResp.Choices[0].Message.Content), nil
+}
