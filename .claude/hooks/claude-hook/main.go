@@ -18,19 +18,21 @@ const Version = "1.0.0"
 
 // Event represents the complete event data structure
 type Event struct {
-	SourceApp      string                 `json:"source_app"`
-	SessionID      string                 `json:"session_id"`
-	HookEventType  string                 `json:"hook_event_type"`
-	Payload        map[string]interface{} `json:"payload"`
-	Timestamp      int64                  `json:"timestamp"`
-	ModelName      string                 `json:"model_name,omitempty"`
-	AgentType      string                 `json:"agent_type"`
-	AgentVersion   string                 `json:"agent_version,omitempty"`
-	Git            GitContext             `json:"git"`
-	Session        SessionContext         `json:"session"`
-	Environment    EnvironmentContext     `json:"environment"`
-	SessionStats   SessionStats           `json:"sessionStats,omitempty"`
-	Tool           *ToolMetadata          `json:"tool,omitempty"`
+	SourceApp       string                 `json:"source_app"`
+	SessionID       string                 `json:"session_id"`
+	HookEventType   string                 `json:"hook_event_type"`
+	Payload         map[string]interface{} `json:"payload"`
+	Timestamp       int64                  `json:"timestamp"`
+	ModelName       string                 `json:"model_name,omitempty"`
+	AgentType       string                 `json:"agent_type"`
+	AgentVersion    string                 `json:"agent_version,omitempty"`
+	Git             GitContext             `json:"git"`
+	Session         SessionContext         `json:"session"`
+	Environment     EnvironmentContext     `json:"environment"`
+	SessionStats    SessionStats           `json:"sessionStats,omitempty"`
+	Tool            *ToolMetadata          `json:"tool,omitempty"`
+	Summary         string                 `json:"summary,omitempty"`         // AI-generated summary
+	SummaryProvider string                 `json:"summaryProvider,omitempty"` // Which LLM provider was used
 }
 
 // GitContext contains git repository metadata
@@ -139,10 +141,21 @@ func main() {
 		projectDir, _ = os.Getwd()
 	}
 
-	// Check if --summarize flag is set - fall back to Python
+	// Generate summary if --summarize flag is set
+	var summary string
+	var summaryProvider string
 	if *summarize {
-		fallbackToPython(payload, *sourceApp, *eventType, *serverURL, *agentType, *agentVersion, *addChat)
-		return
+		if client := NewSummarizer(); client != nil {
+			summaryProvider = client.Provider()
+			var err error
+			summary, err = client.Summarize(*eventType, payload)
+			if err != nil {
+				// Log error but continue - graceful degradation
+				fmt.Fprintf(os.Stderr, "[summarizer:%s] error: %v\n", summaryProvider, err)
+				summary = ""
+			}
+		}
+		// If no client (no API key), silently skip summarization
 	}
 
 	// Extract model name from transcript
@@ -186,18 +199,20 @@ func main() {
 
 	// Build event
 	event := Event{
-		SourceApp:     *sourceApp,
-		SessionID:     sessionID,
-		HookEventType: *eventType,
-		Payload:       payload,
-		Timestamp:     time.Now().UnixMilli(),
-		ModelName:     modelName,
-		AgentType:     *agentType,
-		Git:           gitCtx,
-		Session:       sessionCtx,
-		Environment:   envCtx,
-		SessionStats:  sessionStats,
-		Tool:          toolMeta,
+		SourceApp:       *sourceApp,
+		SessionID:       sessionID,
+		HookEventType:   *eventType,
+		Payload:         payload,
+		Timestamp:       time.Now().UnixMilli(),
+		ModelName:       modelName,
+		AgentType:       *agentType,
+		Git:             gitCtx,
+		Session:         sessionCtx,
+		Environment:     envCtx,
+		SessionStats:    sessionStats,
+		Tool:            toolMeta,
+		Summary:         summary,
+		SummaryProvider: summaryProvider,
 	}
 
 	if *agentVersion != "" {
@@ -724,34 +739,3 @@ func updateSessionStats(sessionID, toolName string, durationMs float64, payload 
 	saveState(allState)
 }
 
-func fallbackToPython(payload map[string]interface{}, sourceApp, eventType, serverURL, agentType, agentVersion string, addChat bool) {
-	// Re-encode payload and pipe to Python script
-	data, _ := json.Marshal(payload)
-
-	scriptPath := filepath.Join(filepath.Dir(os.Args[0]), "..", "send_event.py")
-
-	args := []string{
-		scriptPath,
-		"--source-app", sourceApp,
-		"--event-type", eventType,
-		"--server-url", serverURL,
-		"--agent-type", agentType,
-		"--summarize",
-	}
-
-	if agentVersion != "" {
-		args = append(args, "--agent-version", agentVersion)
-	}
-
-	if addChat {
-		args = append(args, "--add-chat")
-	}
-
-	cmd := exec.Command("uv", append([]string{"run", "--script"}, args...)...)
-	cmd.Stdin = bytes.NewReader(data)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	cmd.Run()
-	os.Exit(0)
-}
