@@ -169,6 +169,11 @@ func (c *OpenAIClient) Provider() string {
 
 // Summarize generates a summary using OpenAI
 func (c *OpenAIClient) Summarize(eventType string, payload map[string]interface{}) (string, error) {
+	start := time.Now()
+	defer func() {
+		fmt.Fprintf(os.Stderr, "[summarizer:openai] latency=%dms\n", time.Since(start).Milliseconds())
+	}()
+
 	prompt := buildSummaryPrompt(eventType, payload)
 
 	reqBody := OpenAIRequest{
@@ -274,6 +279,11 @@ func (c *AnthropicClient) Provider() string {
 
 // Summarize generates a summary using Anthropic
 func (c *AnthropicClient) Summarize(eventType string, payload map[string]interface{}) (string, error) {
+	start := time.Now()
+	defer func() {
+		fmt.Fprintf(os.Stderr, "[summarizer:anthropic] latency=%dms\n", time.Since(start).Milliseconds())
+	}()
+
 	prompt := buildSummaryPrompt(eventType, payload)
 
 	reqBody := AnthropicRequest{
