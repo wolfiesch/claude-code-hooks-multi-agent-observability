@@ -274,10 +274,11 @@ const getThemeColor = (property: string): string => {
 
 const getActiveConfig = (): ChartConfig => {
   return {
-    maxDataPoints: 60,
+    maxDataPoints: 300, // Match ultra-fine bucket count from useAgentChartData
     animationDuration: 300,
-    barWidth: 3,
-    barGap: 1,
+    barWidth: 2, // Thinner bars for more detailed visualization
+    barGap: 0, // No gap between bars for dense, continuous display
+    compact: true, // Enable compact mode: smaller emojis, no backgrounds, always show
     colors: {
       primary: getThemeColor('primary'),
       glow: getThemeColor('primary-light'),

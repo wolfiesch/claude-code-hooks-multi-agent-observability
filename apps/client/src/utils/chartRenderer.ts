@@ -140,11 +140,11 @@ export class ChartRenderer {
     
     dataPoints.forEach((point, index) => {
       if (point.count === 0) return;
-      
+
       const x = chartArea.x + (index * totalBarWidth) + (totalBarWidth - barWidth) / 2;
       const barHeight = (point.count / maxValue) * chartArea.height * progress;
       const y = chartArea.y + chartArea.height - barHeight;
-      
+
       // Get the dominant session color for this bar
       let barColor = this.config.colors.primary;
       if (getSessionColor && point.sessions && Object.keys(point.sessions).length > 0) {
@@ -153,88 +153,119 @@ export class ChartRenderer {
           .sort((a, b) => b[1] - a[1])[0][0];
         barColor = getSessionColor(dominantSession);
       }
+
+      const isCompact = this.config.compact || false;
+
+      if (isCompact) {
+        // COMPACT MODE: Just glow, no bar (cleaner for ultra-fine swim lanes)
+        // Draw larger glow effect centered in the time bucket
+        const centerX = x + barWidth / 2;
+        const centerY = chartArea.y + chartArea.height / 2; // Center vertically in chart area
+        this.drawBarGlow(centerX - barWidth / 2, centerY - 15, barWidth, 30, point.count / maxValue, barColor);
+      } else {
+        // FULL MODE: Draw glow + bar (original behavior for main chart)
+        // Draw glow effect with session color
+        this.drawBarGlow(x, y, barWidth, barHeight, point.count / maxValue, barColor);
+
+        // Draw bar with rounded top
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y + 2);
+        this.ctx.lineTo(x, y + barHeight);
+        this.ctx.lineTo(x + barWidth, y + barHeight);
+        this.ctx.lineTo(x + barWidth, y + 2);
+        this.ctx.arcTo(x + barWidth, y, x + barWidth / 2, y, 2);
+        this.ctx.arcTo(x, y, x, y + 2, 2);
+        this.ctx.closePath();
+
+        // Enhanced gradient with session color
+        const gradient = this.ctx.createLinearGradient(x, y, x, y + barHeight);
+        gradient.addColorStop(0, this.adjustColorOpacity(barColor, 0.9));
+        gradient.addColorStop(0.5, barColor);
+        gradient.addColorStop(1, this.adjustColorOpacity(barColor, 0.7));
+
+        this.ctx.fillStyle = gradient;
+        this.ctx.fill();
+        this.ctx.restore();
+      }
       
-      // Draw glow effect with session color
-      this.drawBarGlow(x, y, barWidth, barHeight, point.count / maxValue, barColor);
-      
-      // Draw bar with rounded top
-      this.ctx.save();
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, y + 2);
-      this.ctx.lineTo(x, y + barHeight);
-      this.ctx.lineTo(x + barWidth, y + barHeight);
-      this.ctx.lineTo(x + barWidth, y + 2);
-      this.ctx.arcTo(x + barWidth, y, x + barWidth / 2, y, 2);
-      this.ctx.arcTo(x, y, x, y + 2, 2);
-      this.ctx.closePath();
-      
-      // Enhanced gradient with session color
-      const gradient = this.ctx.createLinearGradient(x, y, x, y + barHeight);
-      gradient.addColorStop(0, this.adjustColorOpacity(barColor, 0.9));
-      gradient.addColorStop(0.5, barColor);
-      gradient.addColorStop(1, this.adjustColorOpacity(barColor, 0.7));
-      
-      this.ctx.fillStyle = gradient;
-      this.ctx.fill();
-      this.ctx.restore();
-      
-      // Draw emoji labels with tooltip background (only if there's enough space)
-      if (formatLabel && point.eventTypes && Object.keys(point.eventTypes).length > 0 && barHeight > 10) {
+      // Draw emoji labels (compact mode for swim lanes, full mode with backgrounds for main chart)
+      const shouldDrawLabel = formatLabel && point.eventTypes && Object.keys(point.eventTypes).length > 0;
+      const meetsHeightRequirement = isCompact || barHeight > 10; // Compact mode ignores height check
+
+      if (shouldDrawLabel && meetsHeightRequirement) {
         const label = formatLabel(point.eventTypes);
         if (label) {
           this.ctx.save();
-          this.ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+
+          // Use smaller font in compact mode
+          const fontSize = isCompact ? 14 : 20;
+          this.ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
 
           // Measure text first to get accurate dimensions
           const metrics = this.ctx.measureText(label);
-          const padding = 8;
-          const bgWidth = metrics.width + padding * 2;
-          const bgHeight = 30;
 
-          // Calculate available horizontal space (bar width + small margin for adjacent bars)
-          const availableWidth = totalBarWidth * 1.5; // Allow slight overlap into adjacent bar space
-
-          // Only draw if the label fits within available space
-          if (bgWidth <= availableWidth) {
-            // Position label vertically centered on the bar
+          if (isCompact) {
+            // COMPACT MODE: No background, just emoji centered in chart area
+            // Skip width check - always show emoji in compact mode
             const labelX = x + barWidth / 2;
-            const labelY = y + barHeight / 2;
+            const labelY = chartArea.y + chartArea.height / 2; // Center vertically in chart area
 
-            // Draw tooltip background
-            const bgX = labelX - bgWidth / 2;
-            const bgY = labelY - bgHeight / 2;
-
-            // Draw rounded rectangle background - lighter in dark mode
-            const isDark = document.documentElement.classList.contains('dark');
-            this.ctx.fillStyle = isDark ? 'rgba(75, 85, 99, 0.95)' : 'rgba(0, 0, 0, 0.85)';
-            this.ctx.beginPath();
-            if ('roundRect' in this.ctx && typeof (this.ctx as any).roundRect === 'function') {
-              (this.ctx as any).roundRect(bgX, bgY, bgWidth, bgHeight, 7);
-            } else {
-              // Fallback for browsers without roundRect support
-              const radius = 7;
-              this.ctx.moveTo(bgX + radius, bgY);
-              this.ctx.lineTo(bgX + bgWidth - radius, bgY);
-              this.ctx.arcTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius, radius);
-              this.ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
-              this.ctx.arcTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight, radius);
-              this.ctx.lineTo(bgX + radius, bgY + bgHeight);
-              this.ctx.arcTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius, radius);
-              this.ctx.lineTo(bgX, bgY + radius);
-              this.ctx.arcTo(bgX, bgY, bgX + radius, bgY, radius);
-              this.ctx.closePath();
-            }
-            this.ctx.fill();
-
-            // Draw text with proper centering
             this.ctx.fillStyle = '#ffffff';
-            this.ctx.textAlign = 'left';
+            this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(label, labelX, labelY);
+          } else {
+            // FULL MODE: Original behavior with background box and width check
+            const padding = 8;
+            const bgWidth = metrics.width + padding * 2;
+            const bgHeight = 30;
 
-            // Calculate the actual text starting position (left-aligned within the box)
-            const textX = bgX + padding;
-            const textY = labelY;
-            this.ctx.fillText(label, textX, textY);
+            // Calculate available horizontal space (bar width + small margin for adjacent bars)
+            const availableWidth = totalBarWidth * 1.5; // Allow slight overlap into adjacent bar space
+
+            // Only draw if the label fits within available space
+            if (bgWidth <= availableWidth) {
+              // Position label vertically centered on the bar
+              const labelX = x + barWidth / 2;
+              const labelY = y + barHeight / 2;
+
+              // Draw tooltip background
+              const bgX = labelX - bgWidth / 2;
+              const bgY = labelY - bgHeight / 2;
+
+              // Draw rounded rectangle background - lighter in dark mode
+              const isDark = document.documentElement.classList.contains('dark');
+              this.ctx.fillStyle = isDark ? 'rgba(75, 85, 99, 0.95)' : 'rgba(0, 0, 0, 0.85)';
+              this.ctx.beginPath();
+              if ('roundRect' in this.ctx && typeof (this.ctx as any).roundRect === 'function') {
+                (this.ctx as any).roundRect(bgX, bgY, bgWidth, bgHeight, 7);
+              } else {
+                // Fallback for browsers without roundRect support
+                const radius = 7;
+                this.ctx.moveTo(bgX + radius, bgY);
+                this.ctx.lineTo(bgX + bgWidth - radius, bgY);
+                this.ctx.arcTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius, radius);
+                this.ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
+                this.ctx.arcTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight, radius);
+                this.ctx.lineTo(bgX + radius, bgY + bgHeight);
+                this.ctx.arcTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius, radius);
+                this.ctx.lineTo(bgX, bgY + radius);
+                this.ctx.arcTo(bgX, bgY, bgX + radius, bgY, radius);
+                this.ctx.closePath();
+              }
+              this.ctx.fill();
+
+              // Draw text with proper centering
+              this.ctx.fillStyle = '#ffffff';
+              this.ctx.textAlign = 'left';
+              this.ctx.textBaseline = 'middle';
+
+              // Calculate the actual text starting position (left-aligned within the box)
+              const textX = bgX + padding;
+              const textY = labelY;
+              this.ctx.fillText(label, textX, textY);
+            }
           }
           this.ctx.restore();
         }

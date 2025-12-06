@@ -266,7 +266,7 @@ const getThemeColor = (property: string): string => {
 
 const getActiveConfig = (): ChartConfig => {
   return {
-    maxDataPoints: 60,
+    maxDataPoints: 120, // Match finer-grained bucket count from useChartData
     animationDuration: 300,
     barWidth: 3,
     barGap: 1,

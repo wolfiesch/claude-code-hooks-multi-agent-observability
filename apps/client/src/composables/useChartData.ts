@@ -39,23 +39,23 @@ const matchesAgent = (event: HookEvent) => {
   const timeRangeConfig = {
     '1m': {
       duration: 60 * 1000, // 1 minute in ms
-      bucketSize: 1000, // 1 second buckets
-      maxPoints: 60
+      bucketSize: 500, // 500ms buckets (finer granularity)
+      maxPoints: 120 // 60s / 0.5s = 120 points
     },
     '3m': {
       duration: 3 * 60 * 1000, // 3 minutes in ms
-      bucketSize: 3000, // 3 second buckets
-      maxPoints: 60
+      bucketSize: 1500, // 1.5 second buckets (finer granularity)
+      maxPoints: 120 // 180s / 1.5s = 120 points
     },
     '5m': {
       duration: 5 * 60 * 1000, // 5 minutes in ms
-      bucketSize: 5000, // 5 second buckets
-      maxPoints: 60
+      bucketSize: 2500, // 2.5 second buckets (finer granularity)
+      maxPoints: 120 // 300s / 2.5s = 120 points
     },
     '10m': {
       duration: 10 * 60 * 1000, // 10 minutes in ms
-      bucketSize: 10000, // 10 second buckets
-      maxPoints: 60
+      bucketSize: 5000, // 5 second buckets (finer granularity)
+      maxPoints: 120 // 600s / 5s = 120 points
     }
   };
   
