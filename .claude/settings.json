@@ -15,7 +15,7 @@
           },
           {
             "type": "command",
-            "command": "~/.claude/bin/claude-hook --source-app claude --event-type PreToolUse --summarize"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type PreToolUse"
           }
         ]
       }
@@ -100,7 +100,7 @@
           },
           {
             "type": "command",
-            "command": "~/.claude/bin/claude-hook --source-app claude --event-type UserPromptSubmit --summarize"
+            "command": "~/.claude/bin/claude-hook --source-app claude --event-type UserPromptSubmit --store-prompt --name-agent --summarize"
           }
         ]
       }

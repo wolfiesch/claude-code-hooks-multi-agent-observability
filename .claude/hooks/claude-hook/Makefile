@@ -1,18 +1,27 @@
-.PHONY: build install test clean benchmark
+.PHONY: build build-all install install-all test clean benchmark
 
-# Build the binary
+# Build the main binary
 build:
 	@echo "Building claude-hook..."
-	go build -o claude-hook -ldflags="-s -w" main.go
+	go build -o claude-hook -ldflags="-s -w" .
 	@echo "✓ Built: ./claude-hook"
+
+# Build all binaries (including status-line)
+build-all: build
+	@echo "Building status-line..."
+	cd ../status-line && go build -o status-line -ldflags="-s -w" .
+	@echo "✓ Built: ../status-line/status-line"
 
 # Build optimized release binary
 build-release:
 	@echo "Building optimized release binary..."
-	CGO_ENABLED=0 go build -o claude-hook -ldflags="-s -w -X main.Version=$(shell git describe --tags --always)" -trimpath main.go
+	CGO_ENABLED=0 go build -o claude-hook -ldflags="-s -w -X main.Version=$(shell git describe --tags --always)" -trimpath .
 	@echo "✓ Built release: ./claude-hook ($(shell ls -lh claude-hook | awk '{print $$5}'))"
+	@echo "Building optimized status-line..."
+	cd ../status-line && CGO_ENABLED=0 go build -o status-line -ldflags="-s -w" -trimpath .
+	@echo "✓ Built release: ../status-line/status-line"
 
-# Install to ~/.claude/bin
+# Install claude-hook to ~/.claude/bin
 install: build
 	@echo "Installing to ~/.claude/bin/..."
 	mkdir -p ~/.claude/bin
@@ -22,6 +31,17 @@ install: build
 	@echo ""
 	@echo "Add to PATH (if not already):"
 	@echo "  export PATH=\"\$$HOME/.claude/bin:\$$PATH\""
+
+# Install all binaries to ~/.claude/bin
+install-all: build-all
+	@echo "Installing all binaries to ~/.claude/bin/..."
+	mkdir -p ~/.claude/bin
+	cp claude-hook ~/.claude/bin/
+	chmod +x ~/.claude/bin/claude-hook
+	cp ../status-line/status-line ~/.claude/bin/
+	chmod +x ~/.claude/bin/status-line
+	@echo "✓ Installed: ~/.claude/bin/claude-hook"
+	@echo "✓ Installed: ~/.claude/bin/status-line"
 
 # Run tests
 test:

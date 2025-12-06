@@ -64,36 +64,118 @@ func newHTTPClient() *http.Client {
 
 // buildSummaryPrompt creates the prompt for summarization (shared by all providers)
 func buildSummaryPrompt(eventType string, payload map[string]interface{}) string {
-	// Truncate payload if too large
-	payloadJSON, _ := json.MarshalIndent(payload, "", "  ")
+	// Extract the most relevant fields for summarization based on event type
+	summaryPayload := extractRelevantFields(eventType, payload)
+
+	payloadJSON, _ := json.MarshalIndent(summaryPayload, "", "  ")
 	payloadStr := string(payloadJSON)
 	if len(payloadStr) > 1000 {
 		payloadStr = payloadStr[:1000] + "..."
 	}
 
-	return fmt.Sprintf(`Generate a one-sentence summary of this Claude Code hook event payload for an engineer monitoring the system.
+	return fmt.Sprintf(`Summarize what the AI agent is DOING, not the hook system.
 
-Event Type: %s
-Payload:
+Tool/Action: %s
+Details:
 %s
 
+IMPORTANT: Describe the ACTUAL ACTION being performed (file being read, command being run, search query, etc.)
+DO NOT mention hooks, events, settings.json, or the monitoring system itself.
+
 Requirements:
-- ONE sentence only (no period at the end)
-- Focus on the key action or information in the payload
-- Be specific and technical
-- Keep under 15 words
-- Use present tense
-- No quotes or formatting
-- Return ONLY the summary text
+- ONE sentence, under 12 words
+- Start with a verb (Reads, Edits, Searches, Runs, Creates, etc.)
+- Be specific: include filenames, commands, or search terms
+- Present tense, no period at end
 
 Examples:
-- Reads configuration file from project root
-- Executes npm install to update dependencies
-- Searches web for React documentation
-- Edits database schema to add user table
-- Agent responds with implementation plan
+- Reads main.go to understand hook implementation
+- Runs "npm install" to update dependencies
+- Searches web for "React hooks documentation"
+- Edits settings.json to update PreToolUse config
+- Creates new session_data.go file
 
-Generate the summary:`, eventType, payloadStr)
+Summary:`, getActionDescription(eventType, payload), payloadStr)
+}
+
+// extractRelevantFields pulls out the most important fields for summarization
+func extractRelevantFields(eventType string, payload map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Always include tool_name if present
+	if toolName, ok := payload["tool_name"].(string); ok {
+		result["tool"] = toolName
+	}
+
+	// Extract tool_input which contains the actual action details
+	if toolInput, ok := payload["tool_input"].(map[string]interface{}); ok {
+		// For Bash: include command
+		if cmd, ok := toolInput["command"].(string); ok {
+			// Truncate long commands
+			if len(cmd) > 200 {
+				cmd = cmd[:200] + "..."
+			}
+			result["command"] = cmd
+		}
+		// For Read/Write/Edit: include file_path
+		if path, ok := toolInput["file_path"].(string); ok {
+			result["file"] = path
+		}
+		// For Grep/Glob: include pattern
+		if pattern, ok := toolInput["pattern"].(string); ok {
+			result["pattern"] = pattern
+		}
+		// For WebSearch: include query
+		if query, ok := toolInput["query"].(string); ok {
+			result["query"] = query
+		}
+		// For WebFetch: include url
+		if url, ok := toolInput["url"].(string); ok {
+			result["url"] = url
+		}
+		// For Edit: include old_string snippet
+		if oldStr, ok := toolInput["old_string"].(string); ok {
+			if len(oldStr) > 100 {
+				oldStr = oldStr[:100] + "..."
+			}
+			result["editing"] = oldStr
+		}
+	}
+
+	// For UserPromptSubmit: include the prompt
+	if prompt, ok := payload["prompt"].(string); ok {
+		if len(prompt) > 200 {
+			prompt = prompt[:200] + "..."
+		}
+		result["prompt"] = prompt
+	}
+
+	// For Notification: include message
+	if message, ok := payload["message"].(string); ok {
+		result["message"] = message
+	}
+
+	return result
+}
+
+// getActionDescription returns a human-readable description of the event type
+func getActionDescription(eventType string, payload map[string]interface{}) string {
+	if toolName, ok := payload["tool_name"].(string); ok {
+		return toolName
+	}
+
+	switch eventType {
+	case "PreToolUse", "PostToolUse":
+		return "Tool execution"
+	case "UserPromptSubmit":
+		return "User prompt"
+	case "Notification":
+		return "Notification"
+	case "Stop":
+		return "Agent response"
+	default:
+		return eventType
+	}
 }
 
 // cleanSummary removes formatting artifacts from the summary

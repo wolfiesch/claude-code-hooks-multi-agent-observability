@@ -106,20 +106,39 @@ type SessionState struct {
 
 func main() {
 	// Parse flags
-	sourceApp := flag.String("source-app", "", "Source application name (required)")
+	sourceApp := flag.String("source-app", "", "Source application name (auto-detected if not provided)")
 	eventType := flag.String("event-type", "", "Hook event type (required)")
 	serverURL := flag.String("server-url", "http://localhost:4000/events", "Server URL")
 	agentType := flag.String("agent-type", "claude", "Type of AI agent")
 	agentVersion := flag.String("agent-version", "", "Agent CLI version")
 	addChat := flag.Bool("add-chat", false, "Include chat transcript")
 	summarize := flag.Bool("summarize", false, "Generate AI summary (falls back to Python)")
+	storePrompt := flag.Bool("store-prompt", false, "Store prompt in global session data for status line")
+	nameAgent := flag.Bool("name-agent", false, "Generate agent name for session (requires --store-prompt)")
 
 	flag.Parse()
 
-	if *sourceApp == "" || *eventType == "" {
-		fmt.Fprintln(os.Stderr, "Error: --source-app and --event-type are required")
+	// Only event-type is required
+	if *eventType == "" {
+		fmt.Fprintln(os.Stderr, "Error: --event-type is required")
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	// Auto-detect source_app from project directory if not provided
+	if *sourceApp == "" {
+		projectDir := os.Getenv("CLAUDE_PROJECT_DIR")
+		if projectDir != "" {
+			*sourceApp = filepath.Base(projectDir)
+		} else {
+			// Fallback to current working directory
+			if cwd, err := os.Getwd(); err == nil {
+				*sourceApp = filepath.Base(cwd)
+			} else {
+				*sourceApp = "unknown"
+			}
+		}
+		fmt.Fprintf(os.Stderr, "Auto-detected source_app: %s\n", *sourceApp)
 	}
 
 	// Read input from stdin
@@ -172,6 +191,21 @@ func main() {
 	// Update tool count for PostToolUse
 	if *eventType == "PostToolUse" {
 		incrementToolCount(sessionID)
+	}
+
+	// Store prompt in global session data for status line (UserPromptSubmit)
+	if *storePrompt && *eventType == "UserPromptSubmit" {
+		if prompt, ok := payload["prompt"].(string); ok && prompt != "" {
+			// Store prompt and metadata in global session data
+			if err := UpdateGlobalSessionPrompt(sessionID, prompt, *sourceApp, projectDir, modelName); err != nil {
+				fmt.Fprintf(os.Stderr, "[session-data] failed to store prompt: %v\n", err)
+			}
+
+			// Generate agent name if requested and this is the first prompt
+			if *nameAgent {
+				go generateAndSetAgentName(sessionID, prompt)
+			}
+		}
 	}
 
 	// Get session stats
