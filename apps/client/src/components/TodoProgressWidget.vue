@@ -4,6 +4,13 @@
       <h3 class="text-sm font-semibold text-[var(--theme-text-primary)] flex items-center gap-2">
         <span class="text-lg">✓</span>
         Todo Progress
+        <span
+          v-if="selectedAgent"
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-[var(--theme-primary-light)] text-[var(--theme-primary-dark)] border border-[var(--theme-primary)]"
+          title="Inspecting this agent"
+        >
+          📌
+        </span>
       </h3>
       <span v-if="lastUpdate" class="text-xs text-[var(--theme-text-secondary)]">
         {{ formatTimestamp(lastUpdate) }}
@@ -103,6 +110,7 @@ interface TodoTracking {
 
 interface Props {
   todoTracking: TodoTracking | null;
+  selectedAgent?: string | null;
 }
 
 const props = defineProps<Props>();

@@ -1,7 +1,23 @@
 <template>
   <div v-if="sessionInfo" class="session-info-card bg-[var(--theme-bg-primary)] rounded-lg shadow-lg border border-[var(--theme-border-primary)] p-4 mobile:p-2">
     <div class="flex items-center justify-between mb-3 mobile:mb-2">
-      <h3 class="text-sm font-semibold text-[var(--theme-text-primary)] mobile:text-xs">Session Info</h3>
+      <div class="flex items-center gap-2 mobile:gap-1">
+        <h3 class="text-sm font-semibold text-[var(--theme-text-primary)] mobile:text-xs">Session Info</h3>
+        <span
+          v-if="selectedAgent"
+          class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold bg-[var(--theme-primary-light)] text-[var(--theme-primary-dark)] border border-[var(--theme-primary)]"
+          title="Inspecting this agent"
+        >
+          📌 {{ selectedAgent }}
+        </span>
+        <span
+          v-else
+          class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[var(--theme-bg-secondary)] text-[var(--theme-text-tertiary)] border border-[var(--theme-border-secondary)]"
+          title="Auto mode - showing latest from all agents"
+        >
+          AUTO
+        </span>
+      </div>
       <div class="flex items-center space-x-2 mobile:space-x-1">
         <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)]">
           {{ sessionInfo.workingDirectoryName }}
@@ -72,6 +88,7 @@ import type { HookEvent } from '../types';
 
 const props = defineProps<{
   events: HookEvent[];
+  selectedAgent?: string | null;
 }>();
 
 // Get the most recent session info from latest event

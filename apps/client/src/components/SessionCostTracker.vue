@@ -4,6 +4,13 @@
       <h3 class="text-sm font-semibold text-[var(--theme-text-primary)] flex items-center gap-2">
         <span class="text-lg">💰</span>
         Session Cost
+        <span
+          v-if="selectedAgent"
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-[var(--theme-primary-light)] text-[var(--theme-primary-dark)] border border-[var(--theme-primary)]"
+          title="Inspecting this agent"
+        >
+          📌
+        </span>
       </h3>
       <div class="flex items-center gap-1.5">
         <span v-if="isEstimated" class="text-xs px-2 py-0.5 bg-amber-500 text-white rounded-full" title="Cost calculated using estimated pricing (model unknown)">
@@ -125,6 +132,7 @@ interface Event {
 interface Props {
   events: Event[];
   sessionDuration?: number; // in seconds
+  selectedAgent?: string | null;
 }
 
 const props = defineProps<Props>();

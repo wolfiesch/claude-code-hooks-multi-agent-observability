@@ -5,11 +5,18 @@
       @click="isExpanded = !isExpanded"
       class="w-full px-4 py-3 mobile:px-3 mobile:py-2 flex items-center justify-between hover:bg-[var(--theme-bg-secondary)] transition-colors cursor-pointer"
     >
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center gap-2 mobile:gap-1">
         <span class="text-lg mobile:text-base">💻</span>
         <h3 class="text-sm mobile:text-xs font-semibold text-[var(--theme-text-primary)]">
           Environment
         </h3>
+        <span
+          v-if="selectedAgent"
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-[var(--theme-primary-light)] text-[var(--theme-primary-dark)] border border-[var(--theme-primary)]"
+          title="Inspecting this agent"
+        >
+          📌
+        </span>
       </div>
       <svg
         :class="['w-5 h-5 mobile:w-4 mobile:h-4 text-[var(--theme-text-tertiary)] transition-transform', isExpanded ? 'rotate-180' : '']"
@@ -118,6 +125,7 @@ const props = defineProps<{
     goVersion?: string;
     rustVersion?: string;
   };
+  selectedAgent?: string | null;
 }>();
 
 const isExpanded = ref(false);

@@ -11,10 +11,10 @@
         <button
           v-for="agentId in displayedAgentIds"
           :key="agentId"
-          @click="emit('selectAgent', agentId)"
+          @click="handleAgentClick(agentId, $event)"
           :class="[
             'text-base mobile:text-sm font-bold px-3 mobile:px-2 py-1 rounded-full transition-all duration-200 hover:shadow-xl hover:scale-105 cursor-pointer',
-            isAgentSelected(agentId)
+            isAgentSelected(agentId) || isAgentInspected(agentId)
               ? 'border-4 shadow-2xl ring-2 ring-offset-2'
               : 'border-2 shadow-lg',
             isAgentActive(agentId)
@@ -24,11 +24,11 @@
           :style="{
             borderColor: getHexColorForApp(getAppNameFromAgentId(agentId)),
             backgroundColor: getHexColorForApp(getAppNameFromAgentId(agentId)) + (isAgentActive(agentId) ? '33' : '1a'),
-            ringColor: isAgentSelected(agentId) ? getHexColorForApp(getAppNameFromAgentId(agentId)) + '80' : 'transparent'
+            ringColor: (isAgentSelected(agentId) || isAgentInspected(agentId)) ? getHexColorForApp(getAppNameFromAgentId(agentId)) + '80' : 'transparent'
           }"
-          :title="`${isAgentSelected(agentId) ? '✓ SELECTED: Click to remove from' : isAgentActive(agentId) ? 'Active: Click to add to' : 'Sleeping: Click to add to'} comparison lanes`"
+          :title="`${getAgentTooltip(agentId)}`"
         >
-          <span class="mr-2">{{ isAgentSelected(agentId) ? '✓' : (isAgentActive(agentId) ? '✨' : '😴') }}</span>
+          <span class="mr-2">{{ getAgentIcon(agentId) }}</span>
           <span class="font-mono text-sm">{{ agentId }}</span>
         </button>
       </div>
@@ -117,11 +117,13 @@ const props = defineProps<{
   uniqueAppNames?: string[]; // Agent IDs (app:session) active in current time window
   allAppNames?: string[]; // All agent IDs (app:session) ever seen in session
   selectedAgents?: string[]; // Agent IDs that have swim lanes showing
+  selectedAgentForInspection?: string | null; // Agent ID selected for metadata inspection
 }>();
 
 const emit = defineEmits<{
   'update:stickToBottom': [value: boolean];
-  selectAgent: [agentName: string];
+  selectAgent: [agentName: string]; // Toggle swim lane
+  selectAgentForInspection: [agentId: string | null]; // Select for metadata inspection
 }>();
 
 const scrollContainer = ref<HTMLElement>();
@@ -148,6 +150,58 @@ const isAgentActive = (agentId: string): boolean => {
 // Check if an agent is selected (has a swim lane showing)
 const isAgentSelected = (agentId: string): boolean => {
   return (props.selectedAgents || []).includes(agentId);
+};
+
+// Check if an agent is selected for inspection (metadata cards)
+const isAgentInspected = (agentId: string): boolean => {
+  return props.selectedAgentForInspection === agentId;
+};
+
+// Handle agent tag click
+const handleAgentClick = (agentId: string, event: MouseEvent) => {
+  if (event.shiftKey) {
+    // Shift+click: Toggle swim lane
+    emit('selectAgent', agentId);
+  } else {
+    // Normal click: Toggle inspection
+    if (isAgentInspected(agentId)) {
+      emit('selectAgentForInspection', null); // Clear selection
+    } else {
+      emit('selectAgentForInspection', agentId); // Select for inspection
+    }
+  }
+};
+
+// Get icon for agent based on state
+const getAgentIcon = (agentId: string): string => {
+  const inspected = isAgentInspected(agentId);
+  const selected = isAgentSelected(agentId);
+  const active = isAgentActive(agentId);
+
+  if (inspected && selected) return '📌✓'; // Both pinned and in swim lane
+  if (inspected) return '📌'; // Pinned for inspection
+  if (selected) return '✓'; // In swim lane
+  if (active) return '✨'; // Active
+  return '😴'; // Sleeping
+};
+
+// Get tooltip for agent based on state
+const getAgentTooltip = (agentId: string): string => {
+  const inspected = isAgentInspected(agentId);
+  const selected = isAgentSelected(agentId);
+  const active = isAgentActive(agentId);
+
+  const parts: string[] = [];
+
+  if (inspected) parts.push('📌 INSPECTING (click to unpin)');
+  else parts.push('Click to inspect metadata');
+
+  if (selected) parts.push('✓ In swim lane (Shift+click to remove)');
+  else parts.push('Shift+click to add swim lane');
+
+  if (!active) parts.push('😴 Sleeping');
+
+  return parts.join(' | ');
 };
 
 const filteredEvents = computed(() => {

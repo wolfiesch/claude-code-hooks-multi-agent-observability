@@ -112,11 +112,20 @@
           fallback-message="Unable to display session metadata. The dashboard will continue to function."
         >
           <div v-if="events.length > 0" class="px-3 py-3 mobile:px-2 mobile:py-2 bg-[var(--theme-bg-secondary)] border-b border-[var(--theme-border-primary)]">
+            <!-- Agent Selector -->
+            <div class="mb-3 mobile:mb-2">
+              <AgentSelector
+                v-model="selectedAgentForInspection"
+                :agents="availableAgents"
+              />
+            </div>
+
+            <!-- Metadata Cards Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
-              <SessionInfoCard :events="events" />
-              <EnvironmentInfoPanel :envInfo="latestEnvironment" />
-              <TodoProgressWidget :todoTracking="latestTodoTracking" />
-              <SessionCostTracker :events="events" :sessionDuration="sessionDuration" />
+              <SessionInfoCard :events="selectedAgentEvents" :selectedAgent="selectedAgentForInspection" />
+              <EnvironmentInfoPanel :envInfo="latestEnvironment" :selectedAgent="selectedAgentForInspection" />
+              <TodoProgressWidget :todoTracking="latestTodoTracking" :selectedAgent="selectedAgentForInspection" />
+              <SessionCostTracker :events="selectedAgentEvents" :sessionDuration="sessionDuration" :selectedAgent="selectedAgentForInspection" />
             </div>
           </div>
         </ErrorBoundary>
@@ -192,8 +201,10 @@
                 :unique-app-names="uniqueAppNames"
                 :all-app-names="allAppNames"
                 :selected-agents="selectedAgentLanes"
+                :selected-agent-for-inspection="selectedAgentForInspection"
                 v-model:stick-to-bottom="stickToBottom"
                 @select-agent="toggleAgentLane"
+                @select-agent-for-inspection="selectAgentForInspection"
               />
             </div>
           </ErrorBoundary>
@@ -269,6 +280,7 @@ import ErrorBoundary from './components/ErrorBoundary.vue';
 import SearchPanel from './components/SearchPanel.vue';
 import SessionReplay from './components/SessionReplay.vue';
 import HistoryPage from './components/HistoryPage.vue';
+import AgentSelector from './components/AgentSelector.vue';
 import { WS_URL } from './config';
 
 // WebSocket connection
@@ -303,6 +315,7 @@ const uniqueAppNames = ref<string[]>([]); // Apps active in current time window
 const allAppNames = ref<string[]>([]); // All apps ever seen in session
 const selectedAgentLanes = ref<string[]>([]);
 const currentTimeRange = ref<TimeRange>('1m'); // Current time range from LivePulseChart
+const selectedAgentForInspection = ref<string | null>(null); // Agent selected for metadata inspection (source_app:session_id)
 
 // Toast notifications
 interface Toast {
@@ -318,24 +331,38 @@ const MAX_TOASTS = 3; // Limit simultaneous toasts
 const seenAgents = new Map<string, number>();
 const AGENT_CLEANUP_INTERVAL = 3600000; // 1 hour in ms
 
-// Get latest environment info from most recent event
+// Helper to get agent ID from event
+const getAgentId = (event: any): string => {
+  const sessionId = event.session_id?.slice(0, 8) || '';
+  return `${event.source_app}:${sessionId}`;
+};
+
+// Get events for selected agent (or all if none selected)
+const selectedAgentEvents = computed(() => {
+  if (!selectedAgentForInspection.value || events.value.length === 0) {
+    return events.value;
+  }
+  return events.value.filter(event => getAgentId(event) === selectedAgentForInspection.value);
+});
+
+// Get latest environment info from most recent event (filtered by selected agent)
 const latestEnvironment = computed(() => {
-  if (events.value.length === 0) return null;
-  const latestEvent = events.value[events.value.length - 1];
+  if (selectedAgentEvents.value.length === 0) return null;
+  const latestEvent = selectedAgentEvents.value[selectedAgentEvents.value.length - 1];
   return latestEvent.environment || null;
 });
 
-// Get latest todo tracking info from most recent event
+// Get latest todo tracking info from most recent event (filtered by selected agent)
 const latestTodoTracking = computed(() => {
-  if (events.value.length === 0) return null;
-  const latestEvent = events.value[events.value.length - 1];
+  if (selectedAgentEvents.value.length === 0) return null;
+  const latestEvent = selectedAgentEvents.value[selectedAgentEvents.value.length - 1];
   return latestEvent.workflow?.todoTracking || null;
 });
 
-// Calculate session duration from session metadata
+// Calculate session duration from session metadata (filtered by selected agent)
 const sessionDuration = computed(() => {
-  if (events.value.length === 0) return 0;
-  const latestEvent = events.value[events.value.length - 1];
+  if (selectedAgentEvents.value.length === 0) return 0;
+  const latestEvent = selectedAgentEvents.value[selectedAgentEvents.value.length - 1];
   return latestEvent.session?.sessionDuration || 0;
 });
 
@@ -461,10 +488,28 @@ const toggleAgentLane = (agentName: string) => {
   }
 };
 
+// Handle agent selection for inspection (metadata cards)
+const selectAgentForInspection = (agentId: string | null) => {
+  selectedAgentForInspection.value = agentId;
+};
+
+// Get list of available agents for selection
+const availableAgents = computed(() => {
+  const agents = new Set<string>();
+  events.value.forEach(event => {
+    const agentId = getAgentId(event);
+    if (agentId) {
+      agents.add(agentId);
+    }
+  });
+  return Array.from(agents).sort();
+});
+
 // Handle clear button click
 const handleClearClick = () => {
   clearEvents();
   selectedAgentLanes.value = [];
+  selectedAgentForInspection.value = null;
   toasts.value = [];
   seenAgents.clear();
   clearAllFilters();
