@@ -49,11 +49,10 @@
       <!-- Wrapped Value (for commands/prompts - never truncate) -->
       <div
         v-else-if="wrap"
-        class="font-mono text-[var(--theme-text-primary)] bg-[var(--theme-bg-tertiary)] px-2 py-1.5 rounded border border-[var(--theme-border-primary)] whitespace-pre-wrap break-words"
+        class="font-mono bg-[var(--theme-bg-tertiary)] px-2 py-1.5 rounded border border-[var(--theme-border-primary)] whitespace-pre-wrap break-words syntax-highlighted"
         :class="compact ? 'text-xs' : 'text-sm'"
-      >
-        {{ stringValue }}
-      </div>
+        v-html="highlightedWrappedValue"
+      ></div>
 
       <!-- Array Value (expandable) -->
       <div v-else-if="isArray">
@@ -107,7 +106,7 @@
         {{ formattedValue }}
       </span>
 
-      <!-- Simple Value with truncation -->
+      <!-- Simple Value with truncation and auto-linkified URLs -->
       <div v-else class="flex items-center gap-1">
         <span
           v-if="!showFull && isTruncated"
@@ -120,6 +119,30 @@
             class="text-[var(--theme-primary)] hover:underline ml-1"
           >
             [more]
+          </button>
+        </span>
+        <span
+          v-else-if="containsUrl && !props.wrap"
+          class="font-mono text-[var(--theme-text-primary)] break-all"
+          :class="compact ? 'text-xs' : 'text-sm'"
+        >
+          <template v-for="(part, index) in linkifiedValue" :key="index">
+            <a
+              v-if="part.type === 'link'"
+              :href="part.content"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+              @click.stop
+            >{{ part.content }}</a>
+            <span v-else>{{ part.content }}</span>
+          </template>
+          <button
+            v-if="showFull && isTruncated"
+            @click.stop="showFull = false"
+            class="text-[var(--theme-primary)] hover:underline ml-1"
+          >
+            [less]
           </button>
         </span>
         <span
@@ -182,6 +205,43 @@ const stringValue = computed(() => {
   if (props.value === undefined || props.value === null) return '';
   if (typeof props.value === 'object') return JSON.stringify(props.value);
   return String(props.value);
+});
+
+// Helper function to detect URLs in text
+const containsUrl = computed(() => {
+  if (typeof props.value !== 'string') return false;
+  // Match http(s)://, file://, and common URL patterns
+  const urlRegex = /(https?:\/\/[^\s]+|file:\/\/[^\s]+|www\.[^\s]+)/gi;
+  return urlRegex.test(props.value);
+});
+
+// Helper function to linkify URLs in text
+const linkifiedValue = computed(() => {
+  if (typeof props.value !== 'string') return String(props.value);
+  const urlRegex = /(https?:\/\/[^\s]+|file:\/\/[^\s]+)/gi;
+  const text = String(props.value);
+  const parts: Array<{ type: 'text' | 'link', content: string }> = [];
+
+  let lastIndex = 0;
+  let match;
+  const regex = new RegExp(urlRegex);
+
+  while ((match = regex.exec(text)) !== null) {
+    // Add text before the URL
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    }
+    // Add the URL
+    parts.push({ type: 'link', content: match[0] });
+    lastIndex = regex.lastIndex;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+
+  return parts.length > 0 ? parts : [{ type: 'text', content: text }];
 });
 
 const displayValue = computed(() => {
@@ -346,4 +406,85 @@ const formattedArray = computed(() => {
   if (!isArray.value || !Array.isArray(props.value)) return '';
   return JSON.stringify(props.value, null, 2);
 });
+
+// Helper function to apply basic syntax highlighting to wrapped text
+const highlightedWrappedValue = computed(() => {
+  const text = stringValue.value;
+
+  // Escape HTML to prevent XSS
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  // Apply basic syntax highlighting for shell commands
+  let highlighted = escaped;
+
+  // Highlight common shell commands (cd, ls, git, npm, etc.)
+  highlighted = highlighted.replace(
+    /\b(cd|ls|git|npm|pnpm|yarn|bun|docker|make|curl|wget|cat|grep|find|sed|awk|python|node|bash|sh)\b/g,
+    '<span class="syntax-command">$1</span>'
+  );
+
+  // Highlight flags/options (-flag, --flag)
+  highlighted = highlighted.replace(
+    /(^|\s)(--?[\w-]+)/gm,
+    '$1<span class="syntax-flag">$2</span>'
+  );
+
+  // Highlight strings in quotes
+  highlighted = highlighted.replace(
+    /(["'])([^"']*)\1/g,
+    '<span class="syntax-string">$1$2$1</span>'
+  );
+
+  // Highlight file paths
+  highlighted = highlighted.replace(
+    /([./~][\w\/.@-]+)/g,
+    '<span class="syntax-path">$1</span>'
+  );
+
+  return `<span class="text-[var(--theme-text-primary)]">${highlighted}</span>`;
+});
 </script>
+
+<style scoped>
+/* Syntax highlighting for code fields */
+.syntax-highlighted :deep(.syntax-command) {
+  color: #0ea5e9; /* Sky blue for commands */
+  font-weight: 600;
+}
+
+.syntax-highlighted :deep(.syntax-flag) {
+  color: #8b5cf6; /* Purple for flags */
+}
+
+.syntax-highlighted :deep(.syntax-string) {
+  color: #10b981; /* Green for strings */
+}
+
+.syntax-highlighted :deep(.syntax-path) {
+  color: #f59e0b; /* Amber for paths */
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .syntax-highlighted :deep(.syntax-command) {
+    color: #38bdf8; /* Lighter sky blue */
+  }
+
+  .syntax-highlighted :deep(.syntax-flag) {
+    color: #a78bfa; /* Lighter purple */
+  }
+
+  .syntax-highlighted :deep(.syntax-string) {
+    color: #34d399; /* Lighter green */
+  }
+
+  .syntax-highlighted :deep(.syntax-path) {
+    color: #fbbf24; /* Lighter amber */
+  }
+}
+</style>
