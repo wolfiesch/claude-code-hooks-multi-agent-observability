@@ -18,14 +18,10 @@
       <StatusBadge :status="session.status" />
     </div>
 
-    <div class="grid grid-cols-3 gap-2 text-sm text-[var(--theme-text-secondary)]">
+    <div class="grid grid-cols-2 gap-2 text-sm text-[var(--theme-text-secondary)]">
       <div class="flex flex-col rounded-md bg-[var(--theme-bg-secondary)] border border-[var(--theme-border-primary)] p-2">
         <span class="text-[10px] uppercase text-[var(--theme-text-tertiary)]">Duration</span>
         <span class="font-semibold text-[var(--theme-text-primary)]">{{ durationLabel }}</span>
-      </div>
-      <div class="flex flex-col rounded-md bg-[var(--theme-bg-secondary)] border border-[var(--theme-border-primary)] p-2">
-        <span class="text-[10px] uppercase text-[var(--theme-text-tertiary)]">Cost</span>
-        <span class="font-semibold text-[var(--theme-text-primary)]">{{ costLabel }}</span>
       </div>
       <div class="flex flex-col rounded-md bg-[var(--theme-bg-secondary)] border border-[var(--theme-border-primary)] p-2">
         <span class="text-[10px] uppercase text-[var(--theme-text-tertiary)]">Events</span>
@@ -63,11 +59,6 @@ const repoLabel = computed(() => props.session.repo_name || props.session.projec
 const startedAt = computed(() => new Date(props.session.start_time).toLocaleString());
 
 const durationLabel = computed(() => formatDuration(props.session.duration_ms ?? undefined));
-
-const costLabel = computed(() => {
-  const cost = props.session.total_cost_usd ?? 0;
-  return `$${cost.toFixed(3)}`;
-});
 
 function formatDuration(ms?: number): string {
   if (!ms) return 'N/A';
