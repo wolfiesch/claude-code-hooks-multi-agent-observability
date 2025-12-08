@@ -241,19 +241,61 @@
       <div v-if="isExpanded" class="mt-2 pt-2 border-t-2 border-[var(--theme-primary)] bg-gradient-to-r from-[var(--theme-bg-primary)] to-[var(--theme-bg-secondary)] rounded-b-lg p-3 space-y-3">
         <!-- Payload -->
         <div>
-          <div class="flex items-center justify-between mb-2">
+          <!-- Header with buttons -->
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h4 class="text-base mobile:text-sm font-bold text-[var(--theme-primary)] drop-shadow-sm flex items-center">
               <span class="mr-1.5 text-xl mobile:text-base">📦</span>
               Payload
             </h4>
-            <button
-              @click.stop="copyPayload"
-              class="px-3 py-1 mobile:px-2 mobile:py-0.5 text-sm mobile:text-xs font-bold rounded-lg bg-[var(--theme-primary)] hover:bg-[var(--theme-primary-dark)] text-white transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 flex items-center space-x-1"
-            >
-              <span>{{ copyButtonText }}</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <!-- Copy Parsed Button -->
+              <button
+                @click.stop="copyParsedPayload"
+                class="px-2.5 py-1 mobile:px-2 mobile:py-0.5 text-xs font-bold rounded-lg bg-[var(--theme-primary)] hover:bg-[var(--theme-primary-dark)] text-white transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/50"
+                aria-label="Copy parsed payload to clipboard"
+              >
+                {{ copyParsedButtonText }}
+              </button>
+              <!-- Copy Raw JSON Button -->
+              <button
+                @click.stop="copyRawPayload"
+                class="px-2.5 py-1 mobile:px-2 mobile:py-0.5 text-xs font-bold rounded-lg bg-[var(--theme-bg-tertiary)] hover:bg-[var(--theme-bg-quaternary)] text-[var(--theme-text-primary)] border border-[var(--theme-border-primary)] transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/50"
+                aria-label="Copy raw JSON payload to clipboard"
+              >
+                {{ copyRawButtonText }}
+              </button>
+              <!-- Toggle Raw JSON Button -->
+              <button
+                @click.stop="showRawPayload = !showRawPayload"
+                class="px-2.5 py-1 mobile:px-2 mobile:py-0.5 text-xs font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/50"
+                :class="showRawPayload
+                  ? 'bg-[var(--theme-primary)] text-white'
+                  : 'bg-[var(--theme-bg-tertiary)] text-[var(--theme-text-primary)] border border-[var(--theme-border-primary)]'"
+                :aria-expanded="showRawPayload"
+                aria-label="Toggle raw JSON view"
+              >
+                {{ showRawPayload ? '▲ Hide Raw' : '▼ Show Raw' }}
+              </button>
+            </div>
           </div>
-          <pre class="text-sm mobile:text-xs text-[var(--theme-text-primary)] bg-[var(--theme-bg-tertiary)] p-3 mobile:p-2 rounded-lg overflow-x-auto max-h-64 overflow-y-auto font-mono border border-[var(--theme-primary)]/30 shadow-md hover:shadow-lg transition-shadow duration-200">{{ formattedPayload }}</pre>
+
+          <!-- Parsed Payload View (Default) -->
+          <div class="bg-[var(--theme-bg-tertiary)] p-3 mobile:p-2 rounded-lg border border-[var(--theme-primary)]/30 shadow-md">
+            <PayloadInterpreter
+              ref="payloadInterpreterRef"
+              :payload="event.payload"
+              :event-type="event.hook_event_type"
+            />
+          </div>
+
+          <!-- Raw JSON View (Collapsible) -->
+          <div v-if="showRawPayload" class="mt-3">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs font-semibold text-[var(--theme-text-tertiary)]">Raw JSON</span>
+              <div class="flex-1 h-px bg-[var(--theme-border-primary)]"></div>
+            </div>
+            <pre class="text-sm mobile:text-xs text-[var(--theme-text-primary)] bg-[var(--theme-bg-quaternary)] p-3 mobile:p-2 rounded-lg overflow-x-auto max-h-64 overflow-y-auto font-mono border border-[var(--theme-border-primary)] shadow-md">{{ formattedPayload }}</pre>
+          </div>
         </div>
         
         <!-- Chat transcript button -->
@@ -292,6 +334,7 @@ import { ref, computed } from 'vue';
 import type { HookEvent, HumanInTheLoopResponse } from '../types';
 import { useMediaQuery } from '../composables/useMediaQuery';
 import ChatTranscriptModal from './ChatTranscriptModal.vue';
+import PayloadInterpreter from './PayloadInterpreter.vue';
 import { API_BASE_URL } from '../config';
 
 const props = defineProps<{
@@ -310,7 +353,10 @@ const emit = defineEmits<{
 // Existing refs
 const isExpanded = ref(false);
 const showChatModal = ref(false);
-const copyButtonText = ref('📋 Copy');
+const showRawPayload = ref(false);
+const copyParsedButtonText = ref('📋 Copy Parsed');
+const copyRawButtonText = ref('📄 Copy Raw');
+const payloadInterpreterRef = ref<InstanceType<typeof PayloadInterpreter> | null>(null);
 
 // New refs for HITL
 const responseText = ref('');
@@ -441,18 +487,35 @@ const formatModelName = (name: string | null | undefined): string => {
   return name;
 };
 
-const copyPayload = async () => {
+const copyParsedPayload = async () => {
   try {
-    await navigator.clipboard.writeText(formattedPayload.value);
-    copyButtonText.value = '✅ Copied!';
+    const parsedText = payloadInterpreterRef.value?.getParsedText() || formattedPayload.value;
+    await navigator.clipboard.writeText(parsedText);
+    copyParsedButtonText.value = '✅ Copied!';
     setTimeout(() => {
-      copyButtonText.value = '📋 Copy';
+      copyParsedButtonText.value = '📋 Copy Parsed';
     }, 2000);
   } catch (err) {
     console.error('Failed to copy:', err);
-    copyButtonText.value = '❌ Failed';
+    copyParsedButtonText.value = '❌ Failed';
     setTimeout(() => {
-      copyButtonText.value = '📋 Copy';
+      copyParsedButtonText.value = '📋 Copy Parsed';
+    }, 2000);
+  }
+};
+
+const copyRawPayload = async () => {
+  try {
+    await navigator.clipboard.writeText(formattedPayload.value);
+    copyRawButtonText.value = '✅ Copied!';
+    setTimeout(() => {
+      copyRawButtonText.value = '📄 Copy Raw';
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy:', err);
+    copyRawButtonText.value = '❌ Failed';
+    setTimeout(() => {
+      copyRawButtonText.value = '📄 Copy Raw';
     }, 2000);
   }
 };
