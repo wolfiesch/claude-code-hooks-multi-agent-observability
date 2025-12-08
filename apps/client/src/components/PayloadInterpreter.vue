@@ -14,6 +14,9 @@
       </span>
     </div>
 
+    <!-- Visual Diff (for PostToolUse with previous output) -->
+    <PayloadDiff v-if="diffInfo" :diff-info="diffInfo" />
+
     <!-- Priority Fields -->
     <div class="space-y-2">
       <PayloadField
@@ -25,6 +28,7 @@
         :wrap="field.wrap"
         :is-path="field.isPath"
         :is-url="field.isUrl"
+        :is-error="field.isError"
       />
     </div>
 
@@ -41,7 +45,8 @@
         @click.stop="showOtherDetails = !showOtherDetails"
         class="flex items-center gap-2 text-sm text-[var(--theme-text-tertiary)] hover:text-[var(--theme-text-primary)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/50 rounded px-1"
         :aria-expanded="showOtherDetails"
-        aria-label="Toggle other details"
+        aria-label="Toggle other details (Press O)"
+        title="Toggle other details (Press O)"
       >
         <span class="text-xs">{{ showOtherDetails ? '▼' : '▶' }}</span>
         <span>Other details ({{ otherFields.length }} fields)</span>
@@ -54,6 +59,7 @@
           :label="field.label"
           :value="field.value"
           :icon="field.icon"
+          :is-error="field.isError"
           compact
         />
       </div>
@@ -62,16 +68,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import PayloadField from './PayloadField.vue';
+import PayloadDiff from './PayloadDiff.vue';
+import { useToolOutputHistory, type DiffInfo } from '../composables/useToolOutputHistory';
+import { useExpandedState } from '../composables/useExpandedState';
+import type { HookEvent } from '../types';
 
 interface Props {
   payload: Record<string, unknown>;
   eventType: string;
+  event?: HookEvent; // Optional full event for diff tracking
 }
 
 const props = defineProps<Props>();
-const showOtherDetails = ref(false);
+
+// Persistent state for "Other details" section
+const storageKey = props.event?.id ? `payload-other-details-${props.event.id}` : 'payload-other-details-default';
+const { isExpanded: showOtherDetails } = useExpandedState(storageKey, false);
+
+// Tool output history tracking
+const { recordToolOutput, getDiffInfo } = useToolOutputHistory();
+
+// Compute diff info for PostToolUse events
+const diffInfo = computed<DiffInfo | null>(() => {
+  if (!props.event || props.eventType !== 'PostToolUse') return null;
+  return getDiffInfo(props.event);
+});
+
+// Record tool output when component is mounted (for future comparisons)
+onMounted(() => {
+  if (props.event && props.eventType === 'PostToolUse') {
+    recordToolOutput(props.event);
+  }
+});
 
 // Field contracts per event type
 const EVENT_FIELD_CONTRACTS: Record<string, {
@@ -101,12 +131,13 @@ const EVENT_FIELD_CONTRACTS: Record<string, {
     wrapFields: ['tool_input.command', 'tool_input.prompt']
   },
   PostToolUse: {
-    priority: ['tool_name', 'tool_input.command', 'tool_input.file_path', 'tool_input.pattern', 'tool_output'],
+    priority: ['tool_name', 'tool_input.command', 'tool_input.file_path', 'tool_input.pattern', 'tool_result.error', 'tool_output'],
     labels: {
       'tool_name': 'Tool',
       'tool_input.command': 'Command',
       'tool_input.file_path': 'File',
       'tool_input.pattern': 'Pattern',
+      'tool_result.error': 'Error',
       'tool_output': 'Output'
     },
     icons: {
@@ -114,9 +145,10 @@ const EVENT_FIELD_CONTRACTS: Record<string, {
       'tool_input.command': '💻',
       'tool_input.file_path': '📄',
       'tool_input.pattern': '🔍',
+      'tool_result.error': '❌',
       'tool_output': '📤'
     },
-    wrapFields: ['tool_input.command', 'tool_output']
+    wrapFields: ['tool_input.command', 'tool_result.error', 'tool_output']
   },
   UserPromptSubmit: {
     priority: ['prompt'],
@@ -279,6 +311,33 @@ const formattedDuration = computed(() => {
   return `${(ms / 1000).toFixed(2)}s`;
 });
 
+// Helper function to detect if a field represents an error
+const isErrorField = (key: string, value: unknown): boolean => {
+  // Check field name for error indicators
+  const errorKeywords = ['error', 'failure', 'failed', 'exception', 'fault'];
+  const keyLower = key.toLowerCase();
+  const hasErrorKeyword = errorKeywords.some(keyword => keyLower.includes(keyword));
+
+  // Check value for error indicators
+  if (typeof value === 'string') {
+    const valueLower = value.toLowerCase();
+    // Don't flag normal status values
+    if (value === 'success' || value === 'ok' || value === 'completed') {
+      return false;
+    }
+    // Flag error-like strings
+    if (valueLower.includes('error') || valueLower.includes('failed') || valueLower.includes('exception')) {
+      return true;
+    }
+  }
+
+  // Check if value indicates failure
+  if (keyLower.includes('status') && value === 'error') return true;
+  if (keyLower.includes('success') && value === false) return true;
+
+  return hasErrorKeyword && value !== null && value !== undefined && value !== '';
+};
+
 // Build priority fields based on event type
 const priorityFields = computed(() => {
   const contract = EVENT_FIELD_CONTRACTS[props.eventType] || {
@@ -296,6 +355,7 @@ const priorityFields = computed(() => {
     wrap?: boolean;
     isPath?: boolean;
     isUrl?: boolean;
+    isError?: boolean;
   }> = [];
 
   for (const path of contract.priority) {
@@ -306,6 +366,7 @@ const priorityFields = computed(() => {
     if (value !== undefined && value !== null && value !== '') {
       const isPath = path.includes('file_path') || path.includes('cwd') || path.includes('transcript_path');
       const isUrl = path.includes('url');
+      const isError = isErrorField(path, value);
 
       fields.push({
         key: path,
@@ -314,7 +375,8 @@ const priorityFields = computed(() => {
         icon: contract.icons?.[path],
         wrap: contract.wrapFields?.includes(path),
         isPath,
-        isUrl
+        isUrl,
+        isError
       });
     }
   }
@@ -338,6 +400,7 @@ const otherFields = computed(() => {
     label: string;
     value: unknown;
     icon?: string;
+    isError?: boolean;
   }> = [];
 
   const flattenObject = (obj: Record<string, unknown>, prefix = ''): void => {
@@ -351,10 +414,12 @@ const otherFields = computed(() => {
       if (value && typeof value === 'object' && !Array.isArray(value) && prefix === '') {
         flattenObject(value as Record<string, unknown>, key);
       } else if (value !== undefined && value !== null && value !== '') {
+        const isError = isErrorField(fullKey, value);
         fields.push({
           key: fullKey,
           label: formatLabel(fullKey),
-          value
+          value,
+          isError
         });
       }
     }
@@ -408,6 +473,11 @@ const getParsedText = (): string => {
   return lines.join('\n');
 };
 
+// Toggle "Other details" section (called by parent keyboard shortcut)
+const toggleOtherDetails = () => {
+  showOtherDetails.value = !showOtherDetails.value;
+};
+
 // Expose for parent component
-defineExpose({ getParsedText });
+defineExpose({ getParsedText, toggleOtherDetails });
 </script>

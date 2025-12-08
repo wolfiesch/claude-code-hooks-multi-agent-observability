@@ -2,12 +2,13 @@
   <div
     :class="[
       'flex gap-2',
-      compact ? 'items-start text-xs' : 'items-start text-sm'
+      compact ? 'items-start text-xs' : 'items-start text-sm',
+      isError ? 'px-2 py-1.5 -mx-2 -my-1 rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-900/20' : ''
     ]"
   >
-    <!-- Icon -->
-    <span v-if="icon" class="flex-shrink-0" :class="compact ? 'text-sm' : 'text-base'">
-      {{ icon }}
+    <!-- Icon (auto-generated or explicit) -->
+    <span v-if="autoIcon" class="flex-shrink-0" :class="compact ? 'text-sm' : 'text-base'">
+      {{ autoIcon }}
     </span>
 
     <!-- Label -->
@@ -54,7 +55,24 @@
         {{ stringValue }}
       </div>
 
-      <!-- Object/Array Value -->
+      <!-- Array Value (expandable) -->
+      <div v-else-if="isArray">
+        <button
+          v-if="!arrayExpanded"
+          @click.stop="arrayExpanded = true"
+          class="font-mono text-[var(--theme-text-tertiary)] hover:text-[var(--theme-text-primary)] transition-colors"
+          :class="compact ? 'text-xs' : 'text-sm'"
+        >
+          {{ formattedValue }} <span class="text-xs">[expand]</span>
+        </button>
+        <pre
+          v-else
+          class="font-mono text-[var(--theme-text-primary)] bg-[var(--theme-bg-tertiary)] px-2 py-1.5 rounded border border-[var(--theme-border-primary)] overflow-x-auto"
+          :class="compact ? 'text-xs max-h-32' : 'text-sm max-h-48'"
+        >{{ formattedArray }}</pre>
+      </div>
+
+      <!-- Object Value (existing objects) -->
       <div v-else-if="isObject">
         <button
           v-if="!expanded"
@@ -70,6 +88,24 @@
           :class="compact ? 'text-xs max-h-32' : 'text-sm max-h-48'"
         >{{ formattedObject }}</pre>
       </div>
+
+      <!-- Boolean Badge -->
+      <span
+        v-else-if="fieldType === 'boolean'"
+        class="inline-flex items-center px-2 py-0.5 rounded font-bold text-xs"
+        :class="value ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-500' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-500'"
+      >
+        {{ formattedValue }}
+      </span>
+
+      <!-- ID / Timestamp / Number with monospace styling -->
+      <span
+        v-else-if="fieldType === 'id' || fieldType === 'timestamp' || fieldType === 'number'"
+        class="font-mono text-[var(--theme-text-primary)] px-1.5 py-0.5 bg-[var(--theme-bg-tertiary)] rounded border border-[var(--theme-border-primary)]"
+        :class="compact ? 'text-xs' : 'text-sm'"
+      >
+        {{ formattedValue }}
+      </span>
 
       <!-- Simple Value with truncation -->
       <div v-else class="flex items-center gap-1">
@@ -125,13 +161,15 @@ interface Props {
   isPath?: boolean;
   isUrl?: boolean;
   compact?: boolean;
+  isError?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   wrap: false,
   isPath: false,
   isUrl: false,
-  compact: false
+  compact: false,
+  isError: false
 });
 
 const expanded = ref(false);
@@ -199,4 +237,113 @@ const copyToClipboard = async () => {
     console.error('Failed to copy:', err);
   }
 };
+
+// Smart field type detection
+const fieldType = computed(() => {
+  const labelLower = props.label.toLowerCase();
+
+  // ID fields
+  if (labelLower.includes('id') || labelLower.includes('uuid') || labelLower.includes('key')) {
+    return 'id';
+  }
+
+  // Timestamp fields
+  if (labelLower.includes('time') || labelLower.includes('date') || labelLower.includes('at') || labelLower === 'timestamp') {
+    return 'timestamp';
+  }
+
+  // Boolean fields
+  if (typeof props.value === 'boolean') {
+    return 'boolean';
+  }
+
+  // Number fields
+  if (typeof props.value === 'number') {
+    return 'number';
+  }
+
+  // Array fields
+  if (Array.isArray(props.value)) {
+    return 'array';
+  }
+
+  return 'default';
+});
+
+// Auto-generated icon based on field type
+const autoIcon = computed(() => {
+  if (props.icon) return props.icon; // Explicit icon takes precedence
+
+  // Error fields get a warning icon
+  if (props.isError) return '⚠️';
+
+  switch (fieldType.value) {
+    case 'id': return '🏷️';
+    case 'timestamp': return '🕒';
+    case 'boolean': return props.value ? '✅' : '❌';
+    case 'number': return '🔢';
+    case 'array': return '📋';
+    default: return undefined;
+  }
+});
+
+// Helper function to format relative time
+const formatRelativeTime = (timestamp: number): string => {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  if (diff < 1000) return 'just now';
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+  return new Date(timestamp).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' });
+};
+
+// Formatted value for special types
+const formattedValue = computed(() => {
+  // Timestamp formatting with relative time and PST timezone
+  if (fieldType.value === 'timestamp' && typeof props.value === 'number') {
+    const date = new Date(props.value);
+    const absoluteTime = date.toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short'
+    });
+    const relativeTime = formatRelativeTime(props.value);
+    return `${relativeTime} (${absoluteTime})`;
+  }
+
+  // Number formatting (add commas)
+  if (fieldType.value === 'number' && typeof props.value === 'number') {
+    return props.value.toLocaleString('en-US');
+  }
+
+  // Boolean rendering
+  if (fieldType.value === 'boolean') {
+    return props.value ? 'true' : 'false';
+  }
+
+  // Array summary
+  if (fieldType.value === 'array' && Array.isArray(props.value)) {
+    return `[${props.value.length} items]`;
+  }
+
+  return stringValue.value;
+});
+
+// Is this an array that can be expanded?
+const isArray = computed(() => fieldType.value === 'array');
+
+const arrayExpanded = ref(false);
+
+const formattedArray = computed(() => {
+  if (!isArray.value || !Array.isArray(props.value)) return '';
+  return JSON.stringify(props.value, null, 2);
+});
 </script>

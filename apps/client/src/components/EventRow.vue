@@ -252,7 +252,8 @@
               <button
                 @click.stop="copyParsedPayload"
                 class="px-2.5 py-1 mobile:px-2 mobile:py-0.5 text-xs font-bold rounded-lg bg-[var(--theme-primary)] hover:bg-[var(--theme-primary-dark)] text-white transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/50"
-                aria-label="Copy parsed payload to clipboard"
+                aria-label="Copy parsed payload to clipboard (Press C)"
+                :title="isExpanded ? 'Copy Parsed (Press C)' : ''"
               >
                 {{ copyParsedButtonText }}
               </button>
@@ -260,7 +261,8 @@
               <button
                 @click.stop="copyRawPayload"
                 class="px-2.5 py-1 mobile:px-2 mobile:py-0.5 text-xs font-bold rounded-lg bg-[var(--theme-bg-tertiary)] hover:bg-[var(--theme-bg-quaternary)] text-[var(--theme-text-primary)] border border-[var(--theme-border-primary)] transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--theme-primary)]/50"
-                aria-label="Copy raw JSON payload to clipboard"
+                aria-label="Copy raw JSON payload to clipboard (Press Shift+C)"
+                :title="isExpanded ? 'Copy Raw JSON (Press Shift+C)' : ''"
               >
                 {{ copyRawButtonText }}
               </button>
@@ -272,7 +274,8 @@
                   ? 'bg-[var(--theme-primary)] text-white'
                   : 'bg-[var(--theme-bg-tertiary)] text-[var(--theme-text-primary)] border border-[var(--theme-border-primary)]'"
                 :aria-expanded="showRawPayload"
-                aria-label="Toggle raw JSON view"
+                aria-label="Toggle raw JSON view (Press R)"
+                :title="isExpanded ? 'Toggle Raw JSON (Press R)' : ''"
               >
                 {{ showRawPayload ? '▲ Hide Raw' : '▼ Show Raw' }}
               </button>
@@ -285,6 +288,7 @@
               ref="payloadInterpreterRef"
               :payload="event.payload"
               :event-type="event.hook_event_type"
+              :event="event"
             />
           </div>
 
@@ -330,9 +334,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import type { HookEvent, HumanInTheLoopResponse } from '../types';
 import { useMediaQuery } from '../composables/useMediaQuery';
+import { useExpandedEvents } from '../composables/useExpandedState';
 import ChatTranscriptModal from './ChatTranscriptModal.vue';
 import PayloadInterpreter from './PayloadInterpreter.vue';
 import { API_BASE_URL } from '../config';
@@ -350,8 +355,14 @@ const emit = defineEmits<{
   (e: 'response-submitted', response: HumanInTheLoopResponse): void;
 }>();
 
+// Expanded state management with persistence
+const { isEventExpanded, toggleEvent } = useExpandedEvents();
+const isExpanded = computed({
+  get: () => isEventExpanded(props.event.id),
+  set: () => toggleEvent(props.event.id)
+});
+
 // Existing refs
-const isExpanded = ref(false);
 const showChatModal = ref(false);
 const showRawPayload = ref(false);
 const copyParsedButtonText = ref('📋 Copy Parsed');
@@ -368,7 +379,7 @@ const localResponse = ref<HumanInTheLoopResponse | null>(null); // Optimistic UI
 const { isMobile } = useMediaQuery();
 
 const toggleExpanded = () => {
-  isExpanded.value = !isExpanded.value;
+  toggleEvent(props.event.id);
 };
 
 const sessionIdShort = computed(() => {
@@ -519,6 +530,51 @@ const copyRawPayload = async () => {
     }, 2000);
   }
 };
+
+// Keyboard shortcut handler
+const handleKeyPress = (event: KeyboardEvent) => {
+  // Only handle shortcuts when event is expanded
+  if (!isExpanded.value) return;
+
+  // Ignore shortcuts when typing in input fields
+  const target = event.target as HTMLElement;
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+  const key = event.key.toLowerCase();
+
+  // R = Toggle Raw JSON
+  if (key === 'r' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    showRawPayload.value = !showRawPayload.value;
+  }
+
+  // C = Copy Parsed
+  if (key === 'c' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    copyParsedPayload();
+  }
+
+  // Shift+C = Copy Raw JSON
+  if (key === 'c' && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    copyRawPayload();
+  }
+
+  // O = Toggle "Other details" in PayloadInterpreter
+  if (key === 'o' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    payloadInterpreterRef.value?.toggleOtherDetails();
+  }
+};
+
+// Setup keyboard shortcuts
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyPress);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyPress);
+});
 
 // New computed properties for HITL
 const hitlTypeEmoji = computed(() => {
