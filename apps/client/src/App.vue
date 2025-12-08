@@ -345,18 +345,34 @@ const selectedAgentEvents = computed(() => {
   return events.value.filter(event => getAgentId(event) === selectedAgentForInspection.value);
 });
 
-// Get latest environment info from most recent event (filtered by selected agent)
+// Get latest environment info by scanning backwards through events (filtered by selected agent)
 const latestEnvironment = computed(() => {
   if (selectedAgentEvents.value.length === 0) return null;
-  const latestEvent = selectedAgentEvents.value[selectedAgentEvents.value.length - 1];
-  return latestEvent.environment || null;
+
+  // Scan backwards through events to find the most recent one with environment data
+  for (let i = selectedAgentEvents.value.length - 1; i >= 0; i--) {
+    const event = selectedAgentEvents.value[i];
+    if (event.environment) {
+      return event.environment;
+    }
+  }
+
+  return null;
 });
 
-// Get latest todo tracking info from most recent event (filtered by selected agent)
+// Get latest todo tracking info by scanning backwards through events (filtered by selected agent)
 const latestTodoTracking = computed(() => {
   if (selectedAgentEvents.value.length === 0) return null;
-  const latestEvent = selectedAgentEvents.value[selectedAgentEvents.value.length - 1];
-  return latestEvent.workflow?.todoTracking || null;
+
+  // Scan backwards through events to find the most recent one with todo tracking data
+  for (let i = selectedAgentEvents.value.length - 1; i >= 0; i--) {
+    const event = selectedAgentEvents.value[i];
+    if (event.workflow?.todoTracking) {
+      return event.workflow.todoTracking;
+    }
+  }
+
+  return null;
 });
 
 // Calculate session duration from session metadata (filtered by selected agent)
