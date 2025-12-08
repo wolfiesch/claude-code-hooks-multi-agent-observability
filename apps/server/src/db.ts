@@ -287,57 +287,94 @@ export function getDatabase(): Database {
   return db;
 }
 
-export function insertEvent(event: HookEvent): HookEvent {
-  const stmt = db.prepare(`
-    INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+/**
+ * Retry helper for database operations that may encounter SQLITE_BUSY
+ * @param operation - Function to execute
+ * @param maxRetries - Maximum number of retries (default: 5)
+ * @param delayMs - Initial delay in milliseconds (default: 10)
+ */
+function retryOnBusy<T>(
+  operation: () => T,
+  maxRetries: number = 5,
+  delayMs: number = 10
+): T {
+  let lastError: Error | null = null;
 
-  const timestamp = event.timestamp || Date.now();
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return operation();
+    } catch (error: any) {
+      lastError = error;
 
-  // Initialize humanInTheLoopStatus to pending if humanInTheLoop exists
-  let humanInTheLoopStatus = event.humanInTheLoopStatus;
-  if (event.humanInTheLoop && !humanInTheLoopStatus) {
-    humanInTheLoopStatus = { status: 'pending' };
+      // Only retry on SQLITE_BUSY errors
+      if (error.code === 'SQLITE_BUSY' && attempt < maxRetries) {
+        // Exponential backoff with jitter
+        const backoffMs = delayMs * Math.pow(2, attempt) + Math.random() * 10;
+        Bun.sleepSync(backoffMs);
+        continue;
+      }
+
+      // If it's not a SQLITE_BUSY error, or we've exhausted retries, rethrow
+      throw error;
+    }
   }
 
-  const result = stmt.run(
-    event.source_app,
-    event.session_id,
-    event.hook_event_type,
-    JSON.stringify(event.payload),
-    event.chat ? JSON.stringify(event.chat) : null,
-    event.summary || null,
-    timestamp,
-    event.humanInTheLoop ? JSON.stringify(event.humanInTheLoop) : null,
-    humanInTheLoopStatus ? JSON.stringify(humanInTheLoopStatus) : null,
-    event.model_name || null,
-    event.input_tokens || null,
-    event.output_tokens || null,
-    event.cost_usd || null,
-    (event as any).git ? JSON.stringify((event as any).git) : null,
-    (event as any).session ? JSON.stringify((event as any).session) : null,
-    (event as any).environment ? JSON.stringify((event as any).environment) : null,
-    (event as any).toolMetadata ? JSON.stringify((event as any).toolMetadata) : null,
-    (event as any).sessionStats ? JSON.stringify((event as any).sessionStats) : null,
-    (event as any).workflow ? JSON.stringify((event as any).workflow) : null,
-    event.agent_type || 'claude',
-    event.agent_version || null,
-    event.parent_session_id || null,
-    (event as any).git_stats ? JSON.stringify((event as any).git_stats) : null
-  );
+  throw lastError || new Error('Operation failed after retries');
+}
 
-  const savedEvent = {
-    ...event,
-    id: result.lastInsertRowid as number,
-    timestamp,
-    humanInTheLoopStatus
-  };
+export function insertEvent(event: HookEvent): HookEvent {
+  return retryOnBusy(() => {
+    const stmt = db.prepare(`
+      INSERT INTO events (source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  // Update session summary
-  upsertSessionSummary(savedEvent);
+    const timestamp = event.timestamp || Date.now();
 
-  return savedEvent;
+    // Initialize humanInTheLoopStatus to pending if humanInTheLoop exists
+    let humanInTheLoopStatus = event.humanInTheLoopStatus;
+    if (event.humanInTheLoop && !humanInTheLoopStatus) {
+      humanInTheLoopStatus = { status: 'pending' };
+    }
+
+    const result = stmt.run(
+      event.source_app,
+      event.session_id,
+      event.hook_event_type,
+      JSON.stringify(event.payload),
+      event.chat ? JSON.stringify(event.chat) : null,
+      event.summary || null,
+      timestamp,
+      event.humanInTheLoop ? JSON.stringify(event.humanInTheLoop) : null,
+      humanInTheLoopStatus ? JSON.stringify(humanInTheLoopStatus) : null,
+      event.model_name || null,
+      event.input_tokens || null,
+      event.output_tokens || null,
+      event.cost_usd || null,
+      (event as any).git ? JSON.stringify((event as any).git) : null,
+      (event as any).session ? JSON.stringify((event as any).session) : null,
+      (event as any).environment ? JSON.stringify((event as any).environment) : null,
+      (event as any).toolMetadata ? JSON.stringify((event as any).toolMetadata) : null,
+      (event as any).sessionStats ? JSON.stringify((event as any).sessionStats) : null,
+      (event as any).workflow ? JSON.stringify((event as any).workflow) : null,
+      event.agent_type || 'claude',
+      event.agent_version || null,
+      event.parent_session_id || null,
+      (event as any).git_stats ? JSON.stringify((event as any).git_stats) : null
+    );
+
+    const savedEvent = {
+      ...event,
+      id: result.lastInsertRowid as number,
+      timestamp,
+      humanInTheLoopStatus
+    };
+
+    // Update session summary
+    upsertSessionSummary(savedEvent);
+
+    return savedEvent;
+  });
 }
 
 export function getFilterOptions(): FilterOptions {
@@ -851,14 +888,17 @@ function extractMetadata(event: HookEvent): {
 } {
   const env = (event as any).environment;
   const git = (event as any).git;
+  const session = (event as any).session;
 
-  if (!env) return {};
+  // Try to get working directory from session first, then fall back to environment
+  const workingDirectory = session?.workingDirectory || env?.working_directory;
+  const workingDirectoryName = session?.workingDirectoryName;
 
   return {
-    repo_name: env.repo_name || env.repository,
-    project_name: env.project_name || env.working_directory?.split('/').pop(),
-    branch_name: git?.branch || env.branch,
-    commit_hash: git?.commit || git?.commit_hash
+    repo_name: env?.repo_name || env?.repository || workingDirectoryName,
+    project_name: env?.project_name || workingDirectoryName || workingDirectory?.split('/').pop(),
+    branch_name: git?.branch || env?.branch,
+    commit_hash: git?.commitHash || git?.commit || git?.commit_hash
   };
 }
 
