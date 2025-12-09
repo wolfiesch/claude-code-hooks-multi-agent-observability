@@ -334,7 +334,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount, watch } from 'vue';
 import type { HookEvent, HumanInTheLoopResponse } from '../types';
 import { useMediaQuery } from '../composables/useMediaQuery';
 import { useExpandedEvents } from '../composables/useExpandedState';
@@ -567,11 +567,18 @@ const handleKeyPress = (event: KeyboardEvent) => {
   }
 };
 
-// Setup keyboard shortcuts
-onMounted(() => {
-  window.addEventListener('keydown', handleKeyPress);
-});
+// Setup keyboard shortcuts - only add listener when this row is expanded
+// This prevents having 50+ global listeners when 50+ rows are rendered
+// Instead, only the expanded row (typically 1) has an active listener
+watch(isExpanded, (newValue) => {
+  if (newValue) {
+    window.addEventListener('keydown', handleKeyPress);
+  } else {
+    window.removeEventListener('keydown', handleKeyPress);
+  }
+}, { immediate: true });
 
+// Cleanup listener on unmount (in case row is expanded when unmounting)
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyPress);
 });

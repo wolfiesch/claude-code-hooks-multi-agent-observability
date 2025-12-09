@@ -40,6 +40,9 @@
               <span class="text-sm mobile:text-xs font-bold text-[var(--theme-text-primary)]">{{ formatGap(eventTimingMetrics.avgGap) }}</span>
               <span class="text-xs mobile:text-[10px] text-[var(--theme-text-tertiary)] font-medium mobile:hidden">avg gap</span>
             </div>
+
+            <!-- Consolidated activity summary -->
+            <ActivitySummary :summary="activitySummary" />
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2 justify-start xl:justify-end">
@@ -122,7 +125,10 @@ import { useChartData } from '../composables/useChartData';
 import { createChartRenderer, type ChartDimensions } from '../utils/chartRenderer';
 import { useEventEmojis } from '../composables/useEventEmojis';
 import { useEventColors } from '../composables/useEventColors';
+import { useTimeSinceMetrics } from '../composables/useTimeSinceMetrics';
+import { useActivitySummary } from '../composables/useActivitySummary';
 import FilterDropdown from './FilterDropdown.vue';
+import ActivitySummary from './ActivitySummary.vue';
 
 const props = withDefaults(defineProps<{
   events: HookEvent[];
@@ -160,8 +166,26 @@ const {
   uniqueAgentIdsInWindow,
   allUniqueAgentIds,
   toolCallCount,
-  eventTimingMetrics
+  eventTimingMetrics,
+  currentConfig
 } = useChartData();
+
+// Initialize time-since metrics tracking
+const {
+  trackEvent: trackTimeSinceEvent,
+  globalMetrics,
+  perAgentIdleMetric,
+  cleanupStaleAgents,
+  reset: resetTimeSince,
+  currentTime: metricsCurrentTime
+} = useTimeSinceMetrics();
+
+// Consolidated activity summary (replaces multiple time chips)
+const { summary: activitySummary } = useActivitySummary(
+  globalMetrics,
+  perAgentIdleMetric,
+  metricsCurrentTime
+);
 
 // Format gap time in ms to readable string (e.g., "125ms" or "1.2s")
 const formatGap = (gapMs: number): string => {
@@ -190,6 +214,7 @@ watch(timeRange, (range) => {
 let renderer: ReturnType<typeof createChartRenderer> | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let animationFrame: number | null = null;
+let renderLoopFrame: number | null = null;  // Track main render loop frame
 const processedEventIds = new Set<string>();
 
 const { formatEventTypeLabel, getEmojiForEventType } = useEventEmojis();
@@ -374,7 +399,8 @@ const processNewEvents = () => {
   newEventsToProcess.forEach(event => {
     if (event.hook_event_type !== 'refresh' && event.hook_event_type !== 'initial' && isEventFiltered(event)) {
       addEvent(event);
-      
+      trackTimeSinceEvent(event);
+
       // Trigger pulse animation for new event
       if (renderer && canvas.value) {
         const chartArea = getDimensions();
@@ -402,6 +428,7 @@ watch(() => props.events, (newEvents) => {
   // If events array is empty, clear all internal state
   if (newEvents.length === 0) {
     clearData();
+    resetTimeSince();
     processedEventIds.clear();
     render();
     return;
@@ -510,6 +537,10 @@ const themeObserver = new MutationObserver(() => {
   }
 });
 
+// Cleanup interval for stale agents
+let metricsCleanupInterval: number | null = null;
+let isComponentMounted = false;  // Track mount state for render loop
+
 onMounted(() => {
   if (!canvas.value || !chartContainer.value) return;
 
@@ -530,29 +561,47 @@ onMounted(() => {
 
   // Listen for window height changes
   window.addEventListener('resize', handleWindowResize);
-  
+
+  // Start cleanup interval for stale agents
+  metricsCleanupInterval = window.setInterval(() => {
+    const config = currentConfig.value;
+    cleanupStaleAgents(config.duration);
+  }, 5000); // Clean up every 5 seconds
+
+  // Mark component as mounted
+  isComponentMounted = true;
+
   // Initial render
   render();
-  
+
   // Start optimized render loop with FPS limiting
   let lastRenderTime = 0;
   const targetFPS = 30;
   const frameInterval = 1000 / targetFPS;
-  
+
   const renderLoop = (currentTime: number) => {
+    // Stop loop if component is unmounted
+    if (!isComponentMounted) {
+      renderLoopFrame = null;
+      return;
+    }
+
     const deltaTime = currentTime - lastRenderTime;
-    
+
     if (deltaTime >= frameInterval) {
       render();
       lastRenderTime = currentTime - (deltaTime % frameInterval);
     }
-    
-    requestAnimationFrame(renderLoop);
+
+    renderLoopFrame = requestAnimationFrame(renderLoop);
   };
-  requestAnimationFrame(renderLoop);
+  renderLoopFrame = requestAnimationFrame(renderLoop);
 });
 
 onUnmounted(() => {
+  // Mark component as unmounted to stop render loop
+  isComponentMounted = false;
+
   cleanupChartData();
 
   if (renderer) {
@@ -563,8 +612,21 @@ onUnmounted(() => {
     resizeObserver.disconnect();
   }
 
+  // Cancel pulse animation frame
   if (animationFrame) {
     cancelAnimationFrame(animationFrame);
+    animationFrame = null;
+  }
+
+  // Cancel render loop frame
+  if (renderLoopFrame) {
+    cancelAnimationFrame(renderLoopFrame);
+    renderLoopFrame = null;
+  }
+
+  if (metricsCleanupInterval !== null) {
+    clearInterval(metricsCleanupInterval);
+    metricsCleanupInterval = null;
   }
 
   themeObserver.disconnect();

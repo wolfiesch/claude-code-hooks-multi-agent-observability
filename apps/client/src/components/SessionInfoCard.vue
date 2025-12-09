@@ -70,15 +70,6 @@
       </div>
     </div>
 
-    <!-- Session Start Time -->
-    <div class="mt-3 mobile:mt-2 pt-3 mobile:pt-2 border-t border-[var(--theme-border-secondary)]">
-      <div class="flex items-center justify-between">
-        <span class="text-[10px] text-[var(--theme-text-tertiary)] uppercase tracking-wide">Started</span>
-        <span class="text-xs mobile:text-[10px] text-[var(--theme-text-secondary)]">
-          {{ formatStartTime(sessionInfo.startTime) }}
-        </span>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -91,43 +82,39 @@ const props = defineProps<{
   selectedAgent?: string | null;
 }>();
 
-// Get the most recent session info from latest event
+// Get the most recent session info by scanning backwards through events
 const sessionInfo = computed(() => {
-  const latestEvent = props.events[props.events.length - 1];
-  if (!latestEvent?.session) return null;
-  return latestEvent.session;
+  if (props.events.length === 0) return null;
+
+  // Scan backwards to find the most recent event with session data
+  for (let i = props.events.length - 1; i >= 0; i--) {
+    const event = props.events[i];
+    if (event?.session) {
+      return event.session;
+    }
+  }
+
+  return null;
 });
 
-// Get the most recent session stats (Tier 1)
+// Get the most recent session stats by scanning backwards through events
 const sessionStats = computed(() => {
-  const latestEvent = props.events[props.events.length - 1];
-  if (!latestEvent?.sessionStats) return null;
-  return latestEvent.sessionStats;
+  if (props.events.length === 0) return null;
+
+  // Scan backwards to find the most recent event with session stats
+  for (let i = props.events.length - 1; i >= 0; i--) {
+    const event = props.events[i];
+    if (event?.sessionStats) {
+      return event.sessionStats;
+    }
+  }
+
+  return null;
 });
 
 function formatDuration(minutes: number | undefined): string {
   if (!minutes) return '0.0';
   return minutes.toFixed(1);
-}
-
-function formatStartTime(isoString: string | undefined): string {
-  if (!isoString) return '';
-  try {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 60) {
-      return `${diffMins}m ago`;
-    } else if (diffMins < 1440) {
-      return `${Math.floor(diffMins / 60)}h ago`;
-    } else {
-      return date.toLocaleTimeString();
-    }
-  } catch {
-    return '';
-  }
 }
 </script>
 

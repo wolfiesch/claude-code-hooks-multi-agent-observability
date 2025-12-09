@@ -60,7 +60,18 @@ def main():
                     tool_input = input_data.get('tool_input', {})
                     todos = tool_input.get('todos', [])
                     if todos:
-                        collector.record_todos(session_id, todos)
+                        try:
+                            collector.record_todos(session_id, todos)
+                            # Debug: log success
+                            debug_file = log_dir / 'todo_tracking_debug.log'
+                            with open(debug_file, 'a') as df:
+                                df.write(f"✓ Recorded {len(todos)} todos for session {session_id[:8]}\n")
+                        except Exception as e:
+                            # Debug: log error
+                            debug_file = log_dir / 'todo_tracking_debug.log'
+                            with open(debug_file, 'a') as df:
+                                df.write(f"✗ Error recording todos: {e}\n")
+                            raise
 
                 duration_ms = collector.record_tool_end(session_id, tool_name)
 

@@ -2,6 +2,14 @@ import { ref, computed } from 'vue';
 import type { HookEvent, ChartDataPoint, TimeRange } from '../types';
 
 /**
+ * Event types to exclude from swim lane visualization.
+ * PreToolUse is excluded because PostToolUse provides the same information
+ * with additional context (success/failure, duration). This reduces visual noise
+ * and makes swim lanes more readable.
+ */
+const DEDUPLICATED_EVENT_TYPES = new Set(['PreToolUse']);
+
+/**
  * Composable for rendering ultra-detailed chart data for individual agent swim lanes.
  * Uses much smaller bucket sizes to show individual events with emojis.
  *
@@ -86,6 +94,11 @@ export function useAgentChartData(agentName: string) {
 
       // Skip if event doesn't match agent ID filter
       if (!matchesAgent(event)) {
+        return;
+      }
+
+      // Skip deduplicated event types (e.g., PreToolUse - PostToolUse is sufficient)
+      if (DEDUPLICATED_EVENT_TYPES.has(event.hook_event_type)) {
         return;
       }
 
@@ -195,9 +208,12 @@ export function useAgentChartData(agentName: string) {
     const now = Date.now();
     const cutoffTime = now - currentConfig.value.duration;
 
-    // Filter events within the time range and by agent ID if specified
+    // Filter events within the time range, by agent ID, and exclude deduplicated types
     let relevantEvents = allEvents.value.filter(event =>
-      event.timestamp && event.timestamp >= cutoffTime && matchesAgent(event)
+      event.timestamp &&
+      event.timestamp >= cutoffTime &&
+      matchesAgent(event) &&
+      !DEDUPLICATED_EVENT_TYPES.has(event.hook_event_type)
     );
 
     // Re-aggregate all relevant events

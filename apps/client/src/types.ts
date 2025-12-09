@@ -190,3 +190,35 @@ export interface SessionsResponse {
   total_count: number;
   params: SessionListParams;
 }
+
+// Time-since metric types for Live Activity Pulse
+export type MetricCategory = 'idle' | 'active' | 'warning' | 'critical';
+export type MetricScope = 'global' | 'per-agent';
+
+export type EventCategory =
+  | 'user_prompt'
+  | 'error'
+  | 'interrupt'
+  | 'session_lifecycle'
+  | 'tool_use'
+  | 'hitl'
+  | 'significant';
+
+export interface TimeSinceMetric {
+  id: string;
+  label: string;
+  emoji: string;
+  lastEventTime: number | null;
+  category: MetricCategory;
+  scope: MetricScope;
+  agentId?: string; // For per-agent metrics
+  thresholds?: {
+    warning: number; // ms
+    critical: number; // ms
+  };
+}
+
+export interface SignificantEventConfig {
+  eventTypes: Set<string>;
+  customFilter?: (event: HookEvent) => boolean;
+}

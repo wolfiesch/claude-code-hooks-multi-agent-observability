@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { HookEvent, FilterOptions } from '../types';
 import { API_BASE_URL } from '../config';
 
@@ -268,9 +268,25 @@ const fetchFilterOptions = async () => {
   }
 };
 
+// Store interval ID for cleanup
+let filterOptionsInterval: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
   fetchFilterOptions();
   // Refresh filter options periodically
-  setInterval(fetchFilterOptions, 30000);
+  filterOptionsInterval = setInterval(fetchFilterOptions, 30000);
+});
+
+onUnmounted(() => {
+  // Clean up interval to prevent memory leak
+  if (filterOptionsInterval) {
+    clearInterval(filterOptionsInterval);
+    filterOptionsInterval = null;
+  }
+  // Clean up debounce timeout
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = null;
+  }
 });
 </script>

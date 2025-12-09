@@ -124,7 +124,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mobile:gap-2">
               <SessionInfoCard :events="selectedAgentEvents" :selectedAgent="selectedAgentForInspection" />
               <EnvironmentInfoPanel :envInfo="latestEnvironment" :selectedAgent="selectedAgentForInspection" />
-              <TodoProgressWidget :todoTracking="latestTodoTracking" :selectedAgent="selectedAgentForInspection" />
+              <TodoProgressWidget :todoTracking="latestTodoTracking" :perAgentTodos="perAgentTodoTracking" :selectedAgent="selectedAgentForInspection" />
               <SessionCostTracker :events="selectedAgentEvents" :sessionDuration="sessionDuration" :selectedAgent="selectedAgentForInspection" />
             </div>
           </div>
@@ -375,6 +375,42 @@ const latestTodoTracking = computed(() => {
   return null;
 });
 
+// Get per-agent todo tracking for multi-agent view (when no specific agent selected)
+const perAgentTodoTracking = computed(() => {
+  if (selectedAgentForInspection.value || events.value.length === 0) {
+    // Return null when a specific agent is selected (use latestTodoTracking instead)
+    return null;
+  }
+
+  // Build a map of agent ID -> latest todo tracking
+  const agentTodos = new Map<string, { agentId: string; todoTracking: any; lastEventTime: number }>();
+
+  // Scan through all events to find the latest todo tracking for each agent
+  for (const event of events.value) {
+    if (event.workflow?.todoTracking) {
+      const agentId = getAgentId(event);
+      const eventTime = event.timestamp || 0;
+      const existing = agentTodos.get(agentId);
+
+      // Update if this is newer than what we have
+      if (!existing || eventTime > existing.lastEventTime) {
+        agentTodos.set(agentId, {
+          agentId,
+          todoTracking: event.workflow.todoTracking,
+          lastEventTime: eventTime
+        });
+      }
+    }
+  }
+
+  // Convert to array and sort by most recent activity
+  const result = Array.from(agentTodos.values())
+    .sort((a, b) => b.lastEventTime - a.lastEventTime)
+    .slice(0, 6); // Limit to 6 agents to avoid UI overflow
+
+  return result.length > 0 ? result : null;
+});
+
 // Calculate session duration from session metadata (filtered by selected agent)
 const sessionDuration = computed(() => {
   if (selectedAgentEvents.value.length === 0) return 0;
@@ -386,46 +422,61 @@ const resolveAgentType = (event: { agent_type?: string; source_app: string }) =>
   return event.agent_type || event.source_app || 'unknown';
 };
 
-const availableAgentTypes = computed(() => {
-  const types = new Set<string>();
-  events.value.forEach(event => {
-    const type = resolveAgentType(event);
-    if (type) {
-      types.add(type);
-    }
-  });
-  return Array.from(types).sort();
-});
+// Optimized filter options - use refs with incremental updates instead of computed O(n) scans
+// These are updated by the watcher below to avoid recalculating on every event
+const availableAgentTypesSet = ref(new Set<string>());
+const availableEventTypesSet = ref(new Set<string>());
+const availableSourceAppsSet = ref(new Set<string>());
+const availableSessionIdsSet = ref(new Set<string>());
+let lastEventsLength = 0;
 
-const availableEventTypes = computed(() => {
-  const types = new Set<string>();
-  events.value.forEach(event => {
-    if (!event.hook_event_type) return;
-    if (event.hook_event_type === 'refresh' || event.hook_event_type === 'initial') return;
-    types.add(event.hook_event_type);
-  });
-  return Array.from(types).sort();
-});
+// Derived sorted arrays for the UI
+const availableAgentTypes = computed(() => Array.from(availableAgentTypesSet.value).sort());
+const availableEventTypes = computed(() => Array.from(availableEventTypesSet.value).sort());
+const availableSourceApps = computed(() => Array.from(availableSourceAppsSet.value).sort());
+const availableSessionIds = computed(() => Array.from(availableSessionIdsSet.value).sort());
 
-const availableSourceApps = computed(() => {
-  const apps = new Set<string>();
-  events.value.forEach(event => {
-    if (event.source_app) {
-      apps.add(event.source_app);
-    }
-  });
-  return Array.from(apps).sort();
-});
+// Helper to extract filter values from a single event
+const extractFilterValues = (event: any) => {
+  const agentType = resolveAgentType(event);
+  if (agentType) availableAgentTypesSet.value.add(agentType);
 
-const availableSessionIds = computed(() => {
-  const sessions = new Set<string>();
-  events.value.forEach(event => {
-    if (event.session_id) {
-      sessions.add(event.session_id);
+  if (event.hook_event_type &&
+      event.hook_event_type !== 'refresh' &&
+      event.hook_event_type !== 'initial') {
+    availableEventTypesSet.value.add(event.hook_event_type);
+  }
+
+  if (event.source_app) availableSourceAppsSet.value.add(event.source_app);
+  if (event.session_id) availableSessionIdsSet.value.add(event.session_id);
+};
+
+// Helper to recalculate all filter options from scratch
+const recalculateFilterOptions = (eventsArray: any[]) => {
+  availableAgentTypesSet.value = new Set<string>();
+  availableEventTypesSet.value = new Set<string>();
+  availableSourceAppsSet.value = new Set<string>();
+  availableSessionIdsSet.value = new Set<string>();
+  eventsArray.forEach(extractFilterValues);
+};
+
+// Watch events and update filter options incrementally
+watch(events, (newEvents) => {
+  const currentLength = newEvents.length;
+
+  // If events were removed (e.g., due to maxEvents limit), recalculate from scratch
+  if (currentLength < lastEventsLength || currentLength === 0) {
+    recalculateFilterOptions(newEvents);
+  } else if (currentLength > lastEventsLength) {
+    // Only process newly added events (at the end of the array)
+    const newEventsCount = currentLength - lastEventsLength;
+    for (let i = currentLength - newEventsCount; i < currentLength; i++) {
+      extractFilterValues(newEvents[i]);
     }
-  });
-  return Array.from(sessions).sort();
-});
+  }
+
+  lastEventsLength = currentLength;
+}, { immediate: true });
 
 const updateFilters = (next: FilterState) => {
   filters.value = {
@@ -445,7 +496,7 @@ const clearAllFilters = () => {
   });
 };
 
-// Watch for new agents and show toast
+// Watch for new agents and show toast + auto-populate swim lanes
 watch(uniqueAppNames, (newAppNames) => {
   const now = Date.now();
 
@@ -453,6 +504,13 @@ watch(uniqueAppNames, (newAppNames) => {
   newAppNames.forEach(appName => {
     if (!seenAgents.has(appName)) {
       seenAgents.set(appName, now);
+
+      // Auto-add new agents to swim lanes (up to 20 max)
+      if (!selectedAgentLanes.value.includes(appName)) {
+        if (selectedAgentLanes.value.length < 20) {
+          selectedAgentLanes.value.push(appName);
+        }
+      }
 
       // Limit max simultaneous toasts
       if (toasts.value.length >= MAX_TOASTS) {

@@ -1,4 +1,4 @@
-import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, searchEvents, getSessionEvents, getSessionsList, getSessionsFilterOptions } from './db';
+import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse, searchEvents, getSessionEvents, getSessionEventCount, getSessionsList, getSessionById, getSessionsFilterOptions } from './db';
 import type { SearchParams } from './db';
 import type { HookEvent, HumanInTheLoopResponse, SessionListParams } from './types';
 import { calculateCost, extractTokensFromPayload } from './cost-calculator';
@@ -221,7 +221,7 @@ const server = Bun.serve({
       });
     }
 
-    // GET /events/session/:sessionId - Get all events for session replay
+    // GET /events/session/:sessionId - Get events for session replay with optional pagination
     if (url.pathname.startsWith('/events/session/') && req.method === 'GET') {
       const sessionId = url.pathname.split('/events/session/')[1];
 
@@ -232,16 +232,33 @@ const server = Bun.serve({
         });
       }
 
-      const events = getSessionEvents(sessionId);
+      // Parse optional pagination parameters (defaults to all events for backward compatibility)
+      const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : undefined;
+      const offset = url.searchParams.get('offset') ? parseInt(url.searchParams.get('offset')!) : undefined;
+
+      // Get total count for pagination metadata
+      const totalCount = getSessionEventCount(sessionId);
+      const events = getSessionEvents(sessionId, limit, offset);
+
+      // Calculate duration from first/last events in full session (not just this page)
+      const allEvents = limit ? getSessionEvents(sessionId, 1, 0) : events;
+      const lastEvents = limit ? getSessionEvents(sessionId, 1, totalCount - 1) : events;
+      const firstTimestamp = allEvents.length > 0 ? allEvents[0].timestamp : null;
+      const lastTimestamp = lastEvents.length > 0 ? lastEvents[lastEvents.length - 1].timestamp : null;
 
       return new Response(JSON.stringify({
         session_id: sessionId,
         event_count: events.length,
-        duration_ms: events.length > 1
-          ? events[events.length - 1].timestamp - events[0].timestamp
-          : 0,
-        start_time: events.length > 0 ? events[0].timestamp : null,
-        end_time: events.length > 0 ? events[events.length - 1].timestamp : null,
+        total_event_count: totalCount,
+        duration_ms: firstTimestamp && lastTimestamp ? lastTimestamp - firstTimestamp : 0,
+        start_time: firstTimestamp,
+        end_time: lastTimestamp,
+        // Pagination metadata
+        pagination: limit !== undefined ? {
+          limit,
+          offset: offset || 0,
+          has_more: (offset || 0) + events.length < totalCount
+        } : null,
         events
       }), {
         headers: { ...headers, 'Content-Type': 'application/json' }
@@ -292,10 +309,9 @@ const server = Bun.serve({
         });
       }
 
-      // Get events and session summary
+      // Get events and session summary - O(1) lookup instead of scanning all sessions
       const events = getSessionEvents(sessionId);
-      const sessions = getSessionsList({ limit: 1, offset: 0 });
-      const sessionSummary = sessions.find(s => s.session_id === sessionId);
+      const sessionSummary = getSessionById(sessionId);
 
       // Identify critical events
       const criticalEvents = events.filter(event => {

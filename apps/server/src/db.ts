@@ -137,13 +137,19 @@ export function initDatabase(): void {
     // If the table doesn't exist yet, the CREATE TABLE above will handle it
   }
 
-  // Create indexes for common queries
+  // Create indexes for common queries - single column indexes
   db.exec('CREATE INDEX IF NOT EXISTS idx_source_app ON events(source_app)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_session_id ON events(session_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_hook_event_type ON events(hook_event_type)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_agent_type ON events(agent_type)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_parent_session_id ON events(parent_session_id)');
+
+  // Composite indexes for common multi-column queries (performance optimization)
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_timestamp ON events(session_id, timestamp)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_source_session ON events(source_app, session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_type_timestamp ON events(hook_event_type, timestamp)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_agent_timestamp ON events(agent_type, timestamp)');
   
   // Create themes table
   db.exec(`
@@ -378,10 +384,11 @@ export function insertEvent(event: HookEvent): HookEvent {
 }
 
 export function getFilterOptions(): FilterOptions {
-  const sourceApps = db.prepare('SELECT DISTINCT source_app FROM events ORDER BY source_app').all() as { source_app: string }[];
+  // Add LIMIT to all queries to prevent unbounded result sets with large databases
+  const sourceApps = db.prepare('SELECT DISTINCT source_app FROM events ORDER BY source_app LIMIT 500').all() as { source_app: string }[];
   const sessionIds = db.prepare('SELECT DISTINCT session_id FROM events ORDER BY session_id DESC LIMIT 300').all() as { session_id: string }[];
-  const hookEventTypes = db.prepare('SELECT DISTINCT hook_event_type FROM events ORDER BY hook_event_type').all() as { hook_event_type: string }[];
-  const agentTypes = db.prepare('SELECT DISTINCT agent_type FROM events WHERE agent_type IS NOT NULL ORDER BY agent_type').all() as { agent_type: string }[];
+  const hookEventTypes = db.prepare('SELECT DISTINCT hook_event_type FROM events ORDER BY hook_event_type LIMIT 100').all() as { hook_event_type: string }[];
+  const agentTypes = db.prepare('SELECT DISTINCT agent_type FROM events WHERE agent_type IS NOT NULL ORDER BY agent_type LIMIT 50').all() as { agent_type: string }[];
 
   return {
     source_apps: sourceApps.map(row => row.source_app),
@@ -813,16 +820,34 @@ function searchEventsSimple(params: SearchParams): HookEvent[] {
   }));
 }
 
-// Get all events for a specific session (for replay)
-export function getSessionEvents(sessionId: string): HookEvent[] {
-  const sql = `
+// Get count of events for a specific session (for pagination metadata)
+export function getSessionEventCount(sessionId: string): number {
+  const result = db.prepare('SELECT COUNT(*) as count FROM events WHERE session_id = ?').get(sessionId) as { count: number };
+  return result.count;
+}
+
+// Get all events for a specific session (for replay) with optional pagination
+export function getSessionEvents(sessionId: string, limit?: number, offset?: number): HookEvent[] {
+  let sql = `
     SELECT id, source_app, session_id, hook_event_type, payload, chat, summary, timestamp, humanInTheLoop, humanInTheLoopStatus, model_name, input_tokens, output_tokens, cost_usd, git, session, environment, toolMetadata, sessionStats, workflow, agent_type, agent_version, parent_session_id, git_stats
     FROM events
     WHERE session_id = ?
     ORDER BY timestamp ASC
   `;
 
-  const rows = db.prepare(sql).all(sessionId) as any[];
+  const params: any[] = [sessionId];
+
+  // Add pagination if limit is provided
+  if (limit !== undefined) {
+    sql += ' LIMIT ?';
+    params.push(limit);
+    if (offset !== undefined) {
+      sql += ' OFFSET ?';
+      params.push(offset);
+    }
+  }
+
+  const rows = db.prepare(sql).all(...params) as any[];
 
   return rows.map(row => ({
     id: row.id,
@@ -1106,6 +1131,37 @@ export function getSessionsList(params: SessionListParams = {}): SessionSummary[
     model_name: row.model_name || undefined,
     critical_events_summary: row.critical_events_summary ? JSON.parse(row.critical_events_summary) : []
   }));
+}
+
+// Get a single session by ID - O(1) lookup instead of scanning all sessions
+export function getSessionById(sessionId: string): SessionSummary | null {
+  const row = db.prepare(`
+    SELECT * FROM session_summaries WHERE session_id = ?
+  `).get(sessionId) as any;
+
+  if (!row) return null;
+
+  return {
+    session_id: row.session_id,
+    source_app: row.source_app,
+    agent_type: row.agent_type,
+    repo_name: row.repo_name || undefined,
+    project_name: row.project_name || undefined,
+    script_name: row.script_name || undefined,
+    branch_name: row.branch_name || undefined,
+    commit_hash: row.commit_hash || undefined,
+    start_time: row.start_time,
+    end_time: row.end_time || undefined,
+    duration_ms: row.duration_ms || undefined,
+    status: row.status as SessionStatus,
+    has_errors: Boolean(row.has_errors),
+    has_hitl: Boolean(row.has_hitl),
+    event_count: row.event_count,
+    critical_event_count: row.critical_event_count,
+    total_cost_usd: row.total_cost_usd,
+    model_name: row.model_name || undefined,
+    critical_events_summary: row.critical_events_summary ? JSON.parse(row.critical_events_summary) : []
+  };
 }
 
 // Get unique filter options for sessions

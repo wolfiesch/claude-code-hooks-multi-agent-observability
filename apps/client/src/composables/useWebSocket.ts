@@ -110,10 +110,11 @@ export function useWebSocket(url: string) {
             const newEvent = sanitizeEvent(rawEvent);
             events.value.push(newEvent);
 
-            // Limit events array to maxEvents, removing the oldest when exceeded
+            // Limit events array to maxEvents, removing oldest events in-place
+            // Using splice instead of slice to avoid creating a new array on every event
             if (events.value.length > maxEvents) {
-              // Keep exactly maxEvents by removing oldest events
-              events.value = events.value.slice(-maxEvents);
+              const removeCount = events.value.length - maxEvents;
+              events.value.splice(0, removeCount);
             }
           }
         } catch (err) {
